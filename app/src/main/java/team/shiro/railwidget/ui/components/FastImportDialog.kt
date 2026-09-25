@@ -26,15 +26,15 @@ fun FastImportDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("智能识别导入") },
+        title = { Text("导入行程") },
         text = {
             Column {
-                Text("粘贴 12306 发送的邮件或短信通知内容，系统将自动提取车次、座位、检票口与时间信息：")
+                Text("粘贴 12306 购票短信或邮件通知，系统将自动录入车次、座位、检票口与发到时间：")
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = rawText,
                     onValueChange = { rawText = it },
-                    placeholder = { Text("在此粘贴 12306 短信或邮件正文...") },
+                    placeholder = { Text("在此粘贴 12306 短信或邮件内容...") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(140.dp),
@@ -51,7 +51,7 @@ fun FastImportDialog(
                 },
                 enabled = rawText.isNotBlank()
             ) {
-                Text("立即解析")
+                Text("确认导入")
             }
         },
         dismissButton = {

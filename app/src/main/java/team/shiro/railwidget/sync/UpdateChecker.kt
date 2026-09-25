@@ -28,7 +28,7 @@ object UpdateChecker {
         .build()
 
     private const val GITHUB_REPO = "luojisama/rail-widget"
-    private const val CURRENT_VERSION = "1.0.0"
+    private const val CURRENT_VERSION = "1.0.1"
 
     fun checkUpdate(): Result<UpdateInfo> {
         return try {

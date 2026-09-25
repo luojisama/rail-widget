@@ -13,7 +13,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
 
     companion object {
         private const val DB_NAME = "rail_widget.db"
-        private const val DB_VERSION = 1
+        private const val DB_VERSION = 2
 
         private const val TABLE_TRIPS = "trips"
         private const val TABLE_SETTINGS = "settings"
@@ -49,6 +49,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
                 price TEXT,
                 stopover_time TEXT,
                 stops_json TEXT,
+                detail_url TEXT,
                 raw_source TEXT,
                 updated_at INTEGER,
                 is_archived INTEGER DEFAULT 0
@@ -67,9 +68,11 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_TRIPS")
-        db.execSQL("DROP TABLE IF EXISTS $TABLE_SETTINGS")
-        onCreate(db)
+        if (oldVersion < 2) {
+            try {
+                db.execSQL("ALTER TABLE $TABLE_TRIPS ADD COLUMN detail_url TEXT")
+            } catch (_: Exception) {}
+        }
     }
 
     fun insertOrUpdateTrip(trip: Trip) {
@@ -92,6 +95,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             put("price", trip.price)
             put("stopover_time", trip.stopoverTime)
             put("stops_json", serializeStops(trip.stops))
+            put("detail_url", trip.detailUrl)
             put("raw_source", trip.rawSource)
             put("updated_at", trip.updatedAt)
             put("is_archived", if (trip.isArchived) 1 else 0)
@@ -111,6 +115,15 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         return list
     }
 
+    /**
+     * 根据阶段过滤行程：未出行、在途中、已结束
+     */
+    fun getTripsByStage(stage: team.shiro.railwidget.data.model.TripStage): List<Trip> {
+        val all = getAllTrips()
+        val now = System.currentTimeMillis()
+        return all.filter { it.getStage(now) == stage && !it.isArchived }
+    }
+
     fun getActiveTrips(): List<Trip> {
         val list = mutableListOf<Trip>()
         val db = readableDatabase
@@ -123,10 +136,24 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         return list
     }
 
+    /**
+     * 小部件与首页核心推荐：优先在途中，次优即将出行
+     */
     fun getLatestUpcomingTrip(): Trip? {
-        val active = getActiveTrips()
-        if (active.isNotEmpty()) return active.first()
-        val all = getAllTrips()
+        val all = getAllTrips().filter { !it.isArchived }
+        val now = System.currentTimeMillis()
+
+        // 1. 优先在途中
+        val inTransit = all.firstOrNull { it.getStage(now) == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT }
+        if (inTransit != null) return inTransit
+
+        // 2. 其次未出行的最早车次
+        val upcoming = all.filter { it.getStage(now) == team.shiro.railwidget.data.model.TripStage.UPCOMING }
+            .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
+            .firstOrNull()
+        if (upcoming != null) return upcoming
+
+        // 3. 兜底返回最新一条
         return all.firstOrNull()
     }
 
@@ -179,6 +206,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             price = c.getString(c.getColumnIndexOrThrow("price")) ?: "",
             stopoverTime = c.getString(c.getColumnIndexOrThrow("stopover_time")) ?: "",
             stops = deserializeStops(c.getString(c.getColumnIndexOrThrow("stops_json"))),
+            detailUrl = if (c.getColumnIndex("detail_url") != -1) c.getString(c.getColumnIndexOrThrow("detail_url")) ?: "" else "",
             rawSource = c.getString(c.getColumnIndexOrThrow("raw_source")) ?: "LOCAL",
             updatedAt = c.getLong(c.getColumnIndexOrThrow("updated_at")),
             isArchived = c.getInt(c.getColumnIndexOrThrow("is_archived")) == 1

@@ -159,8 +159,13 @@ fun HeroTripCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
+                    val seatDisplay = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
+                        "${trip.carriage} ${trip.seat}".trim()
+                    } else {
+                        "席位详见官方凭证"
+                    }
                     Text(
-                        text = "${trip.carriage} ${trip.seat}",
+                        text = seatDisplay,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -174,17 +179,20 @@ fun HeroTripCard(
                 Spacer(modifier = Modifier.weight(1f))
 
                 // Highlighted Gate Badge
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFFFFE8D6)
-                ) {
-                    Text(
-                        text = "检票口 ${trip.getCleanTicketGate()}",
-                        color = Color(0xFFBA1A1A),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
+                val gateCode = trip.getCleanTicketGate()
+                if (gateCode.isNotBlank() && gateCode != "暂无") {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = Color(0xFFFFE8D6)
+                    ) {
+                        Text(
+                            text = "检票口 $gateCode",
+                            color = Color(0xFFBA1A1A),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
 
@@ -234,12 +242,36 @@ fun HeroTripCard(
                 }
             }
 
-            // Action row: Archive & Delete
+            // Action row: 12306 Official Link & Archive/Delete
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (trip.detailUrl.isNotBlank()) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        modifier = Modifier.clickable {
+                            try {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(trip.detailUrl)).apply {
+                                    flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {}
+                        }
+                    ) {
+                        Text(
+                            text = "查看 12306 详情 ↗",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
                 IconButton(onClick = onArchive) {
                     Icon(
                         imageVector = Icons.Default.Archive,

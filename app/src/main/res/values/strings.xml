@@ -1,12 +1,12 @@
 <resources>
-    <string name="app_name">铁路行程助手</string>
+    <string name="app_name">铁行卡片</string>
     <string name="widget_2x2_name">车票磁贴 (2x2)</string>
-    <string name="widget_2x2_desc">显示最近车次、座位、检票口与出发时间</string>
+    <string name="widget_2x2_desc">显示车次、座位、检票口与出发时间</string>
     <string name="widget_4x2_name">行程横卡 (4x2)</string>
-    <string name="widget_4x2_desc">通栏行程卡片，包含时刻、车次、座位及检票状态</string>
+    <string name="widget_4x2_desc">通栏车票卡片，包含时刻、车次、座位及出行状态</string>
     <string name="widget_4x4_name">全景看板 (4x4)</string>
-    <string name="widget_4x4_desc">完整车次时间轴、经停站、倒计时与一键刷新</string>
-    <string name="sync_cloud_mail">Cloud Mail 同步</string>
-    <string name="sync_imap">标准 IMAP 同步</string>
-    <string name="sync_sms">短信一键导入</string>
+    <string name="widget_4x4_desc">完整车次时刻、经停站序列与手动刷新</string>
+    <string name="sync_cloud_mail">邮箱同步</string>
+    <string name="sync_imap">IMAP 邮箱同步</string>
+    <string name="sync_sms">读取 12306 短信</string>
 </resources>

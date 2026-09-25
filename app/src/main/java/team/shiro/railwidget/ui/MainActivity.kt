@@ -1,15 +1,19 @@
 package team.shiro.railwidget.ui
 
+import android.Manifest
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +34,10 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,10 +50,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -63,14 +71,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import team.shiro.railwidget.data.api.RailwayApiService
 import team.shiro.railwidget.data.local.TripDatabaseHelper
 import team.shiro.railwidget.data.model.Trip
+import team.shiro.railwidget.data.model.TripStage
 import team.shiro.railwidget.data.parser.Parser12306
 import team.shiro.railwidget.sync.CloudMailClient
+import team.shiro.railwidget.sync.SmsInboxReader
 import team.shiro.railwidget.sync.StandardImapClient
 import team.shiro.railwidget.sync.UpdateChecker
 import team.shiro.railwidget.sync.UpdateInfo
@@ -116,7 +127,10 @@ class MainActivity : ComponentActivity() {
         val snackbarHostState = remember { SnackbarHostState() }
 
         var trips by remember { mutableStateOf(emptyList<Trip>()) }
-        var isSyncing by remember { mutableStateOf(false) }
+        var isSyncingMail by remember { mutableStateOf(false) }
+        var isReadingSms by remember { mutableStateOf(false) }
+        var selectedTabIndex by remember { mutableIntStateOf(0) }
+
         var showImportDialog by remember { mutableStateOf(false) }
         var showSettingsDialog by remember { mutableStateOf(false) }
 
@@ -131,22 +145,54 @@ class MainActivity : ComponentActivity() {
             TripWidgetRenderer.updateAllWidgets(context)
         }
 
-        LaunchedEffect(Unit) {
-            reloadTrips()
-            // Auto sync from Cloud Mail if database is empty on start and credentials are set
-            if (trips.isEmpty()) {
-                val mailUrl = db.getSetting("cloudmail_url", "")
-                val mailUser = db.getSetting("cloudmail_user", "")
-                val mailPass = db.getSetting("cloudmail_pass", "")
-                if (mailUrl.isNotBlank() && mailUser.isNotBlank() && mailPass.isNotBlank()) {
-                    isSyncing = true
-                    withContext(Dispatchers.IO) {
-                        CloudMailClient.sync(mailUrl, mailUser, mailPass, db)
+        // 短信权限请求启动器
+        val smsPermissionLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestPermission()
+        ) { isGranted ->
+            if (isGranted) {
+                scope.launch {
+                    isReadingSms = true
+                    val imported = withContext(Dispatchers.IO) {
+                        SmsInboxReader.syncFromSmsInbox(context)
                     }
-                    isSyncing = false
+                    isReadingSms = false
                     reloadTrips()
+                    if (imported.isNotEmpty()) {
+                        snackbarHostState.showSnackbar("已成功读取并导入 ${imported.size} 条 12306 短信车票")
+                    } else {
+                        snackbarHostState.showSnackbar("未在收件箱中发现新的 12306 短信")
+                    }
+                }
+            } else {
+                scope.launch {
+                    snackbarHostState.showSnackbar("需要读取短信权限以自动同步 12306 车票短信")
                 }
             }
+        }
+
+        fun triggerSmsSync() {
+            val hasPerm = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
+            if (hasPerm) {
+                scope.launch {
+                    isReadingSms = true
+                    val imported = withContext(Dispatchers.IO) {
+                        SmsInboxReader.syncFromSmsInbox(context)
+                    }
+                    isReadingSms = false
+                    reloadTrips()
+                    if (imported.isNotEmpty()) {
+                        snackbarHostState.showSnackbar("已成功读取并导入 ${imported.size} 条 12306 短信车票")
+                    } else {
+                        snackbarHostState.showSnackbar("未在收件箱中发现新的 12306 短信")
+                    }
+                }
+            } else {
+                smsPermissionLauncher.launch(Manifest.permission.READ_SMS)
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            reloadTrips()
         }
 
         fun triggerMailSync() {
@@ -163,16 +209,16 @@ class MainActivity : ComponentActivity() {
             }
 
             scope.launch {
-                isSyncing = true
+                isSyncingMail = true
                 val result = withContext(Dispatchers.IO) {
                     CloudMailClient.sync(mailUrl, mailUser, mailPass, db)
                 }
-                isSyncing = false
+                isSyncingMail = false
                 reloadTrips()
 
                 if (result.isSuccess) {
                     val count = result.getOrNull()?.size ?: 0
-                    snackbarHostState.showSnackbar("同步成功！已自动拉取并缓存 $count 条车票信息")
+                    snackbarHostState.showSnackbar("同步完成，已获取 $count 条车票信息")
                 } else {
                     snackbarHostState.showSnackbar("同步失败: ${result.exceptionOrNull()?.message}")
                 }
@@ -192,7 +238,7 @@ class MainActivity : ComponentActivity() {
                     if (info != null && info.hasUpdate) {
                         updateInfo = info
                     } else {
-                        snackbarHostState.showSnackbar("当前已是最新版本 (v1.0.0)")
+                        snackbarHostState.showSnackbar("当前已是最新版本 (v1.0.1)")
                     }
                 } else {
                     snackbarHostState.showSnackbar("检查更新失败: ${result.exceptionOrNull()?.message}")
@@ -200,277 +246,290 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // 行程三分类
+        val now = System.currentTimeMillis()
+        val upcomingTrips = trips.filter { it.getStage(now) == TripStage.UPCOMING && !it.isArchived }
+            .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
+        val inTransitTrips = trips.filter { it.getStage(now) == TripStage.IN_TRANSIT && !it.isArchived }
+            .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
+        val completedTrips = trips.filter { it.getStage(now) == TripStage.COMPLETED || it.isArchived }
+            .sortedWith(compareByDescending<Trip> { it.departureDate }.thenByDescending { it.departureTime })
+
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                TopAppBar(
-                    title = {
-                        Column {
-                            Text(
-                                text = "铁路行程助手",
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleLarge
-                            )
-                            Text(
-                                text = "12306 智能桌面小部件 · MIUI 14+",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    actions = {
-                        // Check update button
-                        IconButton(onClick = { triggerCheckUpdate() }) {
-                            if (isCheckingUpdate) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Default.SystemUpdate, contentDescription = "检查更新")
+                Column {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text(
+                                    text = "铁行卡片",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                                Text(
+                                    text = "铁路行程与桌面小组件",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
-                        }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        actions = {
+                            // 读取短信按钮
+                            if (isReadingSms) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp).padding(end = 8.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                IconButton(onClick = { triggerSmsSync() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sms,
+                                        contentDescription = "读取 12306 短信"
+                                    )
+                                }
+                            }
 
-                        // Mail sync button
-                        if (isSyncing) {
-                            CircularProgressIndicator(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .padding(end = 8.dp),
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            IconButton(onClick = { triggerMailSync() }) {
+                            // 邮箱同步按钮
+                            if (isSyncingMail) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(22.dp).padding(end = 8.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                IconButton(onClick = { triggerMailSync() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "同步邮箱"
+                                    )
+                                }
+                            }
+
+                            // 检查更新按钮
+                            IconButton(onClick = { triggerCheckUpdate() }) {
+                                if (isCheckingUpdate) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Icon(Icons.Default.SystemUpdate, contentDescription = "检查更新")
+                                }
+                            }
+
+                            // 设置按钮
+                            IconButton(onClick = { showSettingsDialog = true }) {
                                 Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "同步邮件"
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "设置"
                                 )
                             }
                         }
+                    )
 
-                        // Settings button
-                        IconButton(onClick = { showSettingsDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "设置"
-                            )
-                        }
+                    // 三阶段选项卡：未出行、在途中、已结束
+                    PrimaryTabRow(
+                        selectedTabIndex = selectedTabIndex,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Tab(
+                            selected = selectedTabIndex == 0,
+                            onClick = { selectedTabIndex = 0 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("未出行")
+                                    if (upcomingTrips.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Badge { Text("${upcomingTrips.size}") }
+                                    }
+                                }
+                            }
+                        )
+                        Tab(
+                            selected = selectedTabIndex == 1,
+                            onClick = { selectedTabIndex = 1 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("在途中")
+                                    if (inTransitTrips.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Badge(containerColor = MaterialTheme.colorScheme.tertiary) {
+                                            Text("${inTransitTrips.size}")
+                                        }
+                                    }
+                                }
+                            }
+                        )
+                        Tab(
+                            selected = selectedTabIndex == 2,
+                            onClick = { selectedTabIndex = 2 },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("已结束")
+                                    if (completedTrips.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Badge(containerColor = MaterialTheme.colorScheme.surfaceVariant) {
+                                            Text("${completedTrips.size}")
+                                        }
+                                    }
+                                }
+                            }
+                        )
                     }
-                )
+                }
             },
             floatingActionButton = {
                 ExtendedFloatingActionButton(
                     onClick = { showImportDialog = true },
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("智能识别导入") }
+                    text = { Text("导入行程") }
                 )
             }
         ) { paddingValues ->
-            val upcomingTrips = trips.filter { !it.isArchived }
-            val archivedTrips = trips.filter { it.isArchived }
-
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
                     .padding(horizontal = 16.dp)
             ) {
-                // Empty State
-                if (trips.isEmpty()) {
-                    item {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 16.dp),
-                            shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Text("🚄", fontSize = 48.sp)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = "暂无出行行程",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                when (selectedTabIndex) {
+                    0 -> {
+                        // TAB 0: 未出行
+                        if (upcomingTrips.isEmpty()) {
+                            item {
+                                EmptyUpcomingCard(
+                                    onReadSms = { triggerSmsSync() },
+                                    onSyncMail = { triggerMailSync() },
+                                    onManualPaste = { showImportDialog = true }
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        } else {
+                            item {
                                 Text(
-                                    text = "支持通过 Cloud Mail 或通用 IMAP 自动同步，也可直接粘贴 12306 短信/邮件解析导入。",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "即将出发",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
                                 )
-                                Spacer(modifier = Modifier.height(18.dp))
-                                Row {
-                                    Button(onClick = { triggerMailSync() }) {
-                                        Icon(Icons.Default.Email, contentDescription = null)
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("从邮箱拉取")
+                                HeroTripCard(
+                                    trip = upcomingTrips.first(),
+                                    onArchive = {
+                                        db.setArchived(upcomingTrips.first().orderNo, true)
+                                        reloadTrips()
+                                    },
+                                    onDelete = {
+                                        db.deleteTrip(upcomingTrips.first().orderNo)
+                                        reloadTrips()
                                     }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    OutlinedButton(onClick = { showImportDialog = true }) {
-                                        Text("手动粘贴")
-                                    }
+                                )
+                            }
+
+                            if (upcomingTrips.size > 1) {
+                                item {
+                                    Text(
+                                        text = "后续车次 (${upcomingTrips.size - 1})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                                    )
+                                }
+                                items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
+                                    HistoryTripItem(
+                                        trip = trip,
+                                        onDelete = {
+                                            db.deleteTrip(trip.orderNo)
+                                            reloadTrips()
+                                        }
+                                    )
+                                    HorizontalDivider()
                                 }
                             }
                         }
-                    }
-                }
 
-                // Upcoming Trips Section
-                if (upcomingTrips.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "当前即将出行",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
-                        )
-                        HeroTripCard(
-                            trip = upcomingTrips.first(),
-                            onArchive = {
-                                db.setArchived(upcomingTrips.first().orderNo, true)
-                                reloadTrips()
-                            },
-                            onDelete = {
-                                db.deleteTrip(upcomingTrips.first().orderNo)
-                                reloadTrips()
-                            }
-                        )
-                    }
-
-                    // Remaining Upcoming Trips
-                    if (upcomingTrips.size > 1) {
+                        // 小部件一键添加引导卡片
                         item {
-                            Text(
-                                text = "后续行程 (${upcomingTrips.size - 1})",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            WidgetPinGuideCard(
+                                onPin2x2 = { requestPinWidget(TripWidget2x2Receiver::class.java) },
+                                onPin4x2 = { requestPinWidget(TripWidget4x2Receiver::class.java) },
+                                onPin4x4 = { requestPinWidget(TripWidget4x4Receiver::class.java) }
                             )
-                        }
-                        items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
-                            HistoryTripItem(
-                                trip = trip,
-                                onDelete = {
-                                    db.deleteTrip(trip.orderNo)
-                                    reloadTrips()
-                                }
-                            )
-                            HorizontalDivider()
                         }
                     }
-                }
 
-                // Widget Quick Pin Section (One-click add to home screen for MIUI 14+)
-                item {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Extension,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
+                    1 -> {
+                        // TAB 1: 在途中
+                        if (inTransitTrips.isEmpty()) {
+                            item {
+                                InTransitEmptyCard()
+                            }
+                        } else {
+                            item {
                                 Text(
-                                    text = "一键添加到桌面小部件",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
+                                    text = "当前运行中 (${inTransitTrips.size})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "点击下方按钮可直接由系统弹窗添加小部件至桌面，适配 MIUI 14 / HyperOS：",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            items(inTransitTrips, key = { it.orderNo }) { trip ->
+                                HeroTripCard(
+                                    trip = trip,
+                                    onArchive = {
+                                        db.setArchived(trip.orderNo, true)
+                                        reloadTrips()
+                                    },
+                                    onDelete = {
+                                        db.deleteTrip(trip.orderNo)
+                                        reloadTrips()
+                                    }
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+                        }
+                    }
 
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = { requestPinWidget(TripWidget2x2Receiver::class.java) },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp)
+                    2 -> {
+                        // TAB 2: 已结束
+                        if (completedTrips.isEmpty()) {
+                            item {
+                                CompletedEmptyCard()
+                            }
+                        } else {
+                            item {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp, bottom = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("添加 2×2 磁贴", fontSize = 12.sp)
-                                }
-                                Button(
-                                    onClick = { requestPinWidget(TripWidget4x2Receiver::class.java) },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Text("添加 4×2 横卡", fontSize = 12.sp)
+                                    Text(
+                                        text = "历史行程 (${completedTrips.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
                                 }
                             }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            OutlinedButton(
-                                onClick = { requestPinWidget(TripWidget4x4Receiver::class.java) },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("添加 4×4 全景看板（含途经时刻表与刷新按钮）", fontSize = 12.sp)
+                            items(completedTrips, key = { it.orderNo }) { trip ->
+                                HistoryTripItem(
+                                    trip = trip,
+                                    onDelete = {
+                                        db.deleteTrip(trip.orderNo)
+                                        reloadTrips()
+                                    }
+                                )
+                                HorizontalDivider()
                             }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-                            HorizontalDivider()
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                                text = "💡 MIUI 14 / 小米澎湃 OS 手动添加指引：\n" +
-                                        "1. 桌面双指捏合 ➔ 点击「添加小部件」；\n" +
-                                        "2. 滑动至最底端点击「支持全部应用」或「安卓传统小部件」；\n" +
-                                        "3. 找到「铁路行程助手」即可挑选不同尺寸。",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline,
-                                lineHeight = 18.sp
-                            )
                         }
                     }
                 }
 
-                // Archived / Past Trips Section
-                if (archivedTrips.isNotEmpty()) {
-                    item {
-                        Text(
-                            text = "历史归档行程 (${archivedTrips.size})",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(top = 20.dp, bottom = 8.dp)
-                        )
-                    }
-                    items(archivedTrips, key = { it.orderNo }) { trip ->
-                        HistoryTripItem(
-                            trip = trip,
-                            onDelete = {
-                                db.deleteTrip(trip.orderNo)
-                                reloadTrips()
-                            }
-                        )
-                        HorizontalDivider()
-                    }
-                }
-
                 item {
-                    Spacer(modifier = Modifier.height(80.dp))
+                    Spacer(modifier = Modifier.height(88.dp))
                 }
             }
         }
@@ -495,9 +554,9 @@ class MainActivity : ComponentActivity() {
                         if (parsed.isNotEmpty()) {
                             parsed.forEach { db.insertOrUpdateTrip(it) }
                             reloadTrips()
-                            snackbarHostState.showSnackbar("成功导入并缓存 ${parsed.size} 条车票信息！")
+                            snackbarHostState.showSnackbar("已导入 ${parsed.size} 条车票信息")
                         } else {
-                            snackbarHostState.showSnackbar("未能识别出 12306 车票信息，请检查文本。")
+                            snackbarHostState.showSnackbar("未能识别出有效车票，请检查内容。")
                         }
                     }
                 }
@@ -528,7 +587,7 @@ class MainActivity : ComponentActivity() {
                     db.setSetting("imap_ssl", imapSsl.toString())
 
                     scope.launch {
-                        isSyncing = true
+                        isSyncingMail = true
                         val res = withContext(Dispatchers.IO) {
                             if (mode == 0) {
                                 CloudMailClient.sync(cloudUrl, cloudUser, cloudPass, db)
@@ -537,11 +596,11 @@ class MainActivity : ComponentActivity() {
                                 StandardImapClient.sync(imapHost, portInt, imapUser, imapPass, imapSsl, db)
                             }
                         }
-                        isSyncing = false
+                        isSyncingMail = false
                         reloadTrips()
 
                         if (res.isSuccess) {
-                            snackbarHostState.showSnackbar("同步成功！已自动拉取并缓存 ${res.getOrNull()?.size ?: 0} 条行程数据")
+                            snackbarHostState.showSnackbar("同步成功！已获取 ${res.getOrNull()?.size ?: 0} 条行程数据")
                         } else {
                             snackbarHostState.showSnackbar("同步失败: ${res.exceptionOrNull()?.message}")
                         }
@@ -584,6 +643,192 @@ class MainActivity : ComponentActivity() {
                     updateInfo = null
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun EmptyUpcomingCard(
+    onReadSms: () -> Unit,
+    onSyncMail: () -> Unit,
+    onManualPaste: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("🚄", fontSize = 44.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "暂无待出行车次",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "可一键扫描本地 12306 购票短信，或连接邮箱自动拉取行程。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(18.dp))
+            Row {
+                Button(onClick = onReadSms) {
+                    Icon(Icons.Default.Sms, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("读取短信")
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                OutlinedButton(onClick = onSyncMail) {
+                    Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("邮箱同步")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InTransitEmptyCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 24.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("🛤️", fontSize = 40.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "当前无在途列车",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "当列车发车后，此处将实时展示行驶进度、预计到站时刻及沿途停靠站。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompletedEmptyCard() {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 24.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("📋", fontSize = 40.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                text = "暂无已完成行程",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "已过到站时间的车次将自动整理归档至此处。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun WidgetPinGuideCard(
+    onPin2x2: () -> Unit,
+    onPin4x2: () -> Unit,
+    onPin4x4: () -> Unit
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Extension,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "一键添加到桌面小组件",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "点击下方按钮直接调起系统添加弹窗（完美适配 MIUI 14 / HyperOS）：",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onPin2x2,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("添加 2×2 磁贴", fontSize = 12.sp)
+                }
+                Button(
+                    onClick = onPin4x2,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("添加 4×2 横卡", fontSize = 12.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = onPin4x4,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("添加 4×4 全景看板（含途经时刻表与刷新按钮）", fontSize = 12.sp)
+            }
         }
     }
 }

@@ -8,6 +8,12 @@ data class StopInfo(
     val stopoverTime: String
 )
 
+enum class TripStage(val title: String) {
+    UPCOMING("未出行"),
+    IN_TRANSIT("在途中"),
+    COMPLETED("已结束")
+}
+
 data class Trip(
     val orderNo: String,
     val passengerName: String,
@@ -26,50 +32,61 @@ data class Trip(
     val price: String = "",
     val stopoverTime: String = "",
     val stops: List<StopInfo> = emptyList(),
+    val detailUrl: String = "", // 12306 官方电子客票短链接
     val rawSource: String = "MANUAL",
     val updatedAt: Long = System.currentTimeMillis(),
     val isArchived: Boolean = false
 ) {
     /**
-     * Compute human-readable check-in / travel status:
-     * - 候车中 (Waiting)
-     * - 正在检票 (Checking in: typically 15-20 min before departure)
-     * - 停止检票 (Stopped: 5 min before departure)
-     * - 已发车 (Departed)
-     * - 已到达 (Arrived)
+     * 计算行程处于哪个核心阶段：未出行、在途中、已结束
      */
-    fun computeStatus(currentTimeMillis: Long = System.currentTimeMillis()): String {
-        return try {
-            val depFullStr = "$departureDate $departureTime"
-            val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
-            val depDate = format.parse(depFullStr) ?: return "候车中"
-            val depMillis = depDate.time
-
-            val arrMillis = if (arrivalTime.isNotBlank()) {
-                val arrFullStr = "$departureDate $arrivalTime"
-                format.parse(arrFullStr)?.time ?: (depMillis + 2 * 3600 * 1000)
-            } else {
-                depMillis + 2 * 3600 * 1000
-            }
-
-            val checkInStart = depMillis - 20 * 60 * 1000
-            val checkInStop = depMillis - 5 * 60 * 1000
-
-            when {
-                currentTimeMillis >= arrMillis -> "已到达"
-                currentTimeMillis >= depMillis -> "列车运行中"
-                currentTimeMillis >= checkInStop -> "停止检票"
-                currentTimeMillis >= checkInStart -> "正在检票"
-                else -> "候车中"
-            }
-        } catch (_: Exception) {
-            "候车中"
+    fun getStage(currentTimeMillis: Long = System.currentTimeMillis()): TripStage {
+        val (depMillis, arrMillis) = calculateTimes()
+        return when {
+            currentTimeMillis < depMillis -> TripStage.UPCOMING
+            currentTimeMillis in depMillis..arrMillis -> TripStage.IN_TRANSIT
+            else -> TripStage.COMPLETED
         }
     }
 
     /**
-     * Returns clean ticket gate string (e.g. "16A" from "呈贡昆明南站 16A")
+     * 规范出行提示：候车中、正在检票、停止检票、运行中、已到达
      */
+    fun computeStatus(currentTimeMillis: Long = System.currentTimeMillis()): String {
+        val (depMillis, arrMillis) = calculateTimes()
+        val checkInStart = depMillis - 20 * 60 * 1000
+        val checkInStop = depMillis - 5 * 60 * 1000
+
+        return when {
+            currentTimeMillis >= arrMillis -> "已到达"
+            currentTimeMillis >= depMillis -> "运行中"
+            currentTimeMillis >= checkInStop -> "停止检票"
+            currentTimeMillis >= checkInStart -> "正在检票"
+            else -> "候车中"
+        }
+    }
+
+    private fun calculateTimes(): Pair<Long, Long> {
+        return try {
+            val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
+            val depFullStr = "$departureDate $departureTime"
+            val depDate = format.parse(depFullStr)
+            val depMillis = depDate?.time ?: System.currentTimeMillis()
+
+            val arrMillis = if (arrivalTime.isNotBlank()) {
+                val arrFullStr = "$departureDate $arrivalTime"
+                val parsedArr = format.parse(arrFullStr)?.time ?: (depMillis + 2 * 3600 * 1000)
+                // 若到站时间跨日（数字小于发车时间），按次日推算
+                if (parsedArr < depMillis) parsedArr + 24 * 3600 * 1000 else parsedArr
+            } else {
+                depMillis + 2 * 3600 * 1000
+            }
+            Pair(depMillis, arrMillis)
+        } catch (_: Exception) {
+            Pair(System.currentTimeMillis(), System.currentTimeMillis() + 2 * 3600 * 1000)
+        }
+    }
+
     fun getCleanTicketGate(): String {
         if (ticketGate.isBlank()) return "暂无"
         val regex = Regex("([0-9]+[A-Za-z]?|[A-Za-z]?[0-9]+)")
@@ -77,3 +94,4 @@ data class Trip(
         return match?.value ?: ticketGate
     }
 }
+

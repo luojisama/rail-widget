@@ -51,4 +51,48 @@ class Parser12306Test {
         assertEquals("16A", trip.ticketGate)
         assertEquals("16:00", trip.departureTime)
     }
+
+    @Test
+    fun testStandard12306SmsWithShortLink() {
+        // 测试截图中典型的 12306 官方极简短信格式（含发车时间、出发站及详情短链接，使用脱敏姓名）
+        val sms = "【12306】张三购票成功，8月15日D3236次，杭州东站13:20开。详情点击s.12306.cn/s/g/kQwueJ"
+        val trip = Parser12306.parseSms(sms)
+        assertNotNull(trip)
+        trip!!
+
+        assertEquals("张三", trip.passengerName)
+        assertEquals("D3236", trip.trainCode)
+        assertEquals("杭州东", trip.departureStation)
+        assertEquals("13:20", trip.departureTime)
+        assertEquals("https://s.12306.cn/s/g/kQwueJ", trip.detailUrl)
+    }
+
+    @Test
+    fun testJingHuHighSpeedTrainSms() {
+        // 京沪高铁标杆车次 G2 测试
+        val sms = "【12306】李四购票成功，10月1日G2次，上海虹桥站09:00开。详情点击s.12306.cn/s/g/example"
+        val trip = Parser12306.parseSms(sms)
+        assertNotNull(trip)
+        trip!!
+
+        assertEquals("李四", trip.passengerName)
+        assertEquals("G2", trip.trainCode)
+        assertEquals("上海虹桥", trip.departureStation)
+        assertEquals("09:00", trip.departureTime)
+    }
+
+    @Test
+    fun testHuKunHighSpeedTrainSms() {
+        // 沪昆高铁干线车次 G1373 测试
+        val sms = "【12306】王五购票成功，10月2日G1373次，上海虹桥站08:50开。详情点击s.12306.cn/s/g/hukun"
+        val trip = Parser12306.parseSms(sms)
+        assertNotNull(trip)
+        trip!!
+
+        assertEquals("王五", trip.passengerName)
+        assertEquals("G1373", trip.trainCode)
+        assertEquals("上海虹桥", trip.departureStation)
+        assertEquals("08:50", trip.departureTime)
+    }
 }
+
