@@ -190,6 +190,21 @@ class Parser12306Test {
         assertEquals("10:49", trip3.departureTime)
         assertEquals("https://s.12306.cn/s/m/SqQtQ3", trip3.detailUrl)
     }
+
+    @Test
+    fun testParseMultiSms() {
+        val multiSmsText = """
+            【12306】李四购票成功，8月15日D3236次，杭州东站13:20开。详情点击s.12306.cn/s/g/kQwueJ
+            【12306】李四改签成功，1月10日D274次，昆明站16:05开。详情点击s.12306.cn/s/l/PpXQoj
+            【12306】李四购票成功，2月23日C308次，普洱站10:49开。详情点击s.12306.cn/s/m/SqQtQ3
+        """.trimIndent()
+
+        val trips = Parser12306.parseMultiSms(multiSmsText)
+        assertEquals(3, trips.size)
+        assertEquals("D3236", trips[0].trainCode)
+        assertEquals("D274", trips[1].trainCode)
+        assertEquals("C308", trips[2].trainCode)
+    }
 }
 
 

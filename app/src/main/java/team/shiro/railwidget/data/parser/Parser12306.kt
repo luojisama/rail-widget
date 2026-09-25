@@ -100,6 +100,45 @@ object Parser12306 {
     }
 
     /**
+     * 支持一次性批量解析多条 12306 短信文本（如用户从系统短信直接复制长文本或多条短信合集）
+     */
+    fun parseMultiSms(rawText: String): List<Trip> {
+        val clean = rawText.trim()
+        if (clean.isBlank()) return emptyList()
+
+        val results = mutableListOf<Trip>()
+
+        // 尝试按照 【12306】 或 【铁路12306】 进行消息分块
+        val blocks = if (clean.contains("【12306】") || clean.contains("【铁路12306】")) {
+            clean.split(Regex("(?=【(?:12306|铁路12306)】)"))
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+        } else {
+            // 按行拆分，过滤包含 车次 或 购票 或 开 的行
+            clean.lines()
+                .map { it.trim() }
+                .filter { it.isNotBlank() && (it.contains("次") || it.contains("开") || it.contains("购票") || it.contains("改签")) }
+        }
+
+        for (block in blocks) {
+            val trip = parseSms(block)
+            if (trip != null && results.none { it.orderNo == trip.orderNo }) {
+                results.add(trip)
+            }
+        }
+
+        // 若分块未匹配到，则尝试整体解析
+        if (results.isEmpty()) {
+            val single = parseSms(clean)
+            if (single != null) {
+                results.add(single)
+            }
+        }
+
+        return results
+    }
+
+    /**
      * Generic extractor for both SMS and informal ticket texts
      */
     fun parseGenericText(

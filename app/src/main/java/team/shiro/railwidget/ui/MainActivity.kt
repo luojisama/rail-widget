@@ -187,6 +187,7 @@ class MainActivity : ComponentActivity() {
         var showImportDialog by remember { mutableStateOf(false) }
         var showSettingsDialog by remember { mutableStateOf(false) }
         var showPinBlockedDialog by remember { mutableStateOf(false) }
+        var showMiuiSmsPermissionDialog by remember { mutableStateOf(false) }
 
         // Bind pin blocked callback
         onPinBlocked = {
@@ -276,7 +277,7 @@ class MainActivity : ComponentActivity() {
                         }
                         snackbarHostState.showSnackbar(desc)
                     } else {
-                        snackbarHostState.showSnackbar("未在收件箱中发现新的 12306 短信车票")
+                        showMiuiSmsPermissionDialog = true
                     }
                 }
             } else {
@@ -345,7 +346,7 @@ class MainActivity : ComponentActivity() {
                     if (info != null && info.hasUpdate) {
                         updateInfo = info
                     } else {
-                        snackbarHostState.showSnackbar("当前已是最新版本 (v1.0.6)")
+                        snackbarHostState.showSnackbar("当前已是最新版本 (v1.0.7)")
                     }
                 } else {
                     snackbarHostState.showSnackbar("检查更新失败: ${result.exceptionOrNull()?.message}")
@@ -670,8 +671,14 @@ class MainActivity : ComponentActivity() {
                             if (emailTrips.isNotEmpty()) {
                                 emailTrips.map { RailwayApiService.enrichTrip(it) }
                             } else {
-                                val smsTrip = Parser12306.parseSms(rawText)
-                                if (smsTrip != null) listOf(RailwayApiService.enrichTrip(smsTrip)) else emptyList()
+                                val multiSms = Parser12306.parseMultiSms(rawText)
+                                multiSms.map {
+                                    if (it.getStage() == TripStage.UPCOMING) {
+                                        try { RailwayApiService.enrichTrip(it) } catch (_: Exception) { it }
+                                    } else {
+                                        it
+                                    }
+                                }
                             }
                         }
 
@@ -681,6 +688,53 @@ class MainActivity : ComponentActivity() {
                             snackbarHostState.showSnackbar("已导入 ${parsed.size} 条车票信息")
                         } else {
                             snackbarHostState.showSnackbar("未能识别出有效车票，请检查内容。")
+                        }
+                    }
+                }
+            )
+        }
+
+        // MIUI / HyperOS 通知类短信权限引导对话框
+        if (showMiuiSmsPermissionDialog) {
+            AlertDialog(
+                onDismissRequest = { showMiuiSmsPermissionDialog = false },
+                title = {
+                    Text(
+                        text = "未检测到 12306 短信 (系统权限提示)",
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            text = "您的收件箱中若有 12306 短信，由于小米 (MIUI/澎湃OS) 将 12306 短信归类为【通知类短信】，系统默认只授予联系人普通短信权限，而拦截了通知类短信读取。\n\n" +
+                                    "【自动读取开启方法】\n" +
+                                    "点击下方「前往系统权限」，在权限管理页面找到【通知类短信】（或在其他权限中）设置为【允许】即可立即同步全部历史车票！\n\n" +
+                                    "【免权限快捷方案】\n" +
+                                    "您也可以直接在系统短信中长按复制 12306 短信（支持一次多选复制全部历史短信），点击「批量粘贴导入」直接入库！",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showMiuiSmsPermissionDialog = false
+                        openAppPermissions(context)
+                    }) {
+                        Text("前往系统权限")
+                    }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(onClick = {
+                            showMiuiSmsPermissionDialog = false
+                            showImportDialog = true
+                        }) {
+                            Text("批量粘贴导入")
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        TextButton(onClick = { showMiuiSmsPermissionDialog = false }) {
+                            Text("关闭")
                         }
                     }
                 }

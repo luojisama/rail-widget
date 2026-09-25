@@ -19,11 +19,13 @@ object SmsInboxReader {
     /**
      * 读取系统短信收件箱中来自 12306 或正文包含铁路购票信息的短信（兼容 MIUI / 澎湃 OS 通知类短信）
      */
-    fun read12306SmsList(context: Context, limit: Int = 500): List<SmsRecord> {
+    fun read12306SmsList(context: Context, limit: Int = 2000): List<SmsRecord> {
         val results = mutableListOf<SmsRecord>()
         val urisToTry = listOf(
+            Telephony.Sms.Inbox.CONTENT_URI,
             Telephony.Sms.CONTENT_URI,
-            Telephony.Sms.Inbox.CONTENT_URI
+            android.net.Uri.parse("content://sms/inbox"),
+            android.net.Uri.parse("content://sms")
         )
 
         val projection = arrayOf(
@@ -61,15 +63,12 @@ object SmsInboxReader {
                                 (body.contains("次") && (body.contains("开") || body.contains("购票") || body.contains("改签")))
 
                         if (is12306Sms) {
-                            // 避免不同 URI 重复添加同一条短信
-                            if (results.none { it.id == id && it.timestamp == date }) {
+                            // 避免不同 URI 重复添加同一条短信（以短信正文与发送时间联合判重）
+                            if (results.none { it.timestamp == date && it.body == body }) {
                                 results.add(SmsRecord(id, address, body, date))
                             }
                         }
                     }
-                }
-                if (results.isNotEmpty()) {
-                    break // 若已成功获取到数据，无需继续尝试兜底 URI
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SmsInboxReader", "Error querying SMS uri: $targetUri", e)
@@ -81,7 +80,7 @@ object SmsInboxReader {
     /**
      * 一键读取并解析导入全部 12306 短信行程（包含未出行与历史行程）
      */
-    fun syncFromSmsInbox(context: Context, limit: Int = 500): List<Trip> {
+    fun syncFromSmsInbox(context: Context, limit: Int = 2000): List<Trip> {
         val records = read12306SmsList(context, limit)
         val importedTrips = mutableListOf<Trip>()
         val db = TripDatabaseHelper.getInstance(context)
