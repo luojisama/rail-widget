@@ -1,16 +1,15 @@
 package team.shiro.railwidget.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,6 +17,7 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,9 +35,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import team.shiro.railwidget.data.model.Trip
+import team.shiro.railwidget.data.model.TripStage
 
 @Composable
 fun HeroTripCard(
@@ -47,10 +50,20 @@ fun HeroTripCard(
     modifier: Modifier = Modifier
 ) {
     var expandedStops by remember { mutableStateOf(false) }
+    val stage = trip.getStage()
+    val isCompleted = stage == TripStage.COMPLETED
+    val isInTransit = stage == TripStage.IN_TRANSIT
 
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp)
+        shape = RoundedCornerShape(24.dp),
+        colors = if (isCompleted) {
+            CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+        } else {
+            CardDefaults.elevatedCardColors()
+        }
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             // Header: Train Code, Date, Passenger, Live Status
@@ -58,13 +71,18 @@ fun HeroTripCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val badgeColor = when {
+                    isCompleted -> MaterialTheme.colorScheme.outline
+                    isInTransit -> Color(0xFF006874)
+                    else -> MaterialTheme.colorScheme.primary
+                }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primary
+                    color = badgeColor
                 ) {
                     Text(
                         text = trip.trainCode,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -74,13 +92,19 @@ fun HeroTripCard(
                 Text(
                     text = "${trip.passengerName} · ${trip.departureDate}",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 8.dp)
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                val statusText = trip.computeStatus()
+                val statusText = when {
+                    isCompleted -> "已结束"
+                    isInTransit -> "运行中"
+                    else -> trip.computeStatus()
+                }
                 SuggestionChip(
                     onClick = { },
                     label = {
@@ -90,6 +114,8 @@ fun HeroTripCard(
                             color = when (statusText) {
                                 "正在检票" -> Color(0xFFBA1A1A)
                                 "停止检票" -> Color(0xFFE25B00)
+                                "运行中" -> Color(0xFF006874)
+                                "已结束" -> MaterialTheme.colorScheme.outline
                                 else -> MaterialTheme.colorScheme.primary
                             }
                         )
@@ -106,61 +132,68 @@ fun HeroTripCard(
             ) {
                 Column(
                     horizontalAlignment = Alignment.Start,
-                    modifier = Modifier.widthIn(max = 120.dp)
+                    modifier = Modifier.weight(1f)
                 ) {
                     Text(
                         text = trip.departureTime,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = trip.departureStation,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                ) {
                     Text(
-                        text = if (trip.stopoverTime.isNotBlank()) "停靠 ${trip.stopoverTime}" else "直达/途经",
+                        text = when {
+                            isCompleted -> "行程结束"
+                            isInTransit -> "行驶中"
+                            trip.stopoverTime.isNotBlank() -> "停靠 ${trip.stopoverTime}"
+                            else -> "直达/途经"
+                        },
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
                     Text(
                         text = "──────➔",
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        fontSize = 14.sp
+                        color = if (isInTransit) Color(0xFF006874) else MaterialTheme.colorScheme.outlineVariant,
+                        fontSize = 13.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
                 Column(
                     horizontalAlignment = Alignment.End,
-                    modifier = Modifier.widthIn(max = 120.dp)
+                    modifier = Modifier.weight(1f)
                 ) {
+                    val arrTime = if (trip.arrivalTime.isNotBlank()) trip.arrivalTime else "--:--"
                     Text(
-                        text = if (trip.arrivalTime.isNotBlank()) trip.arrivalTime else "--:--",
+                        text = arrTime,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = trip.arrivalStation,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -169,7 +202,7 @@ fun HeroTripCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     val seatDisplay = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
                         "${trip.carriage} ${trip.seat}".trim()
                     } else {
@@ -178,36 +211,55 @@ fun HeroTripCard(
                     Text(
                         text = seatDisplay,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
                         text = "${trip.seatType} · ${trip.ticketType}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-
-                Spacer(modifier = Modifier.weight(1f))
 
                 // Highlighted Gate Badge
                 val gateCode = trip.getCleanTicketGate()
                 if (gateCode.isNotBlank() && gateCode != "暂无") {
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = Color(0xFFFFE8D6)
-                    ) {
-                        Text(
-                            text = "检票口 $gateCode",
-                            color = Color(0xFFBA1A1A),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    if (isCompleted) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Text(
+                                text = "检票口 $gateCode",
+                                color = MaterialTheme.colorScheme.outline,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                            )
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFFE8D6)
+                        ) {
+                            Text(
+                                text = "检票口 $gateCode",
+                                color = Color(0xFFBA1A1A),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // Expandable Stops Schedule
+            // Expandable Stops Schedule (Neat formatting without awkward wrapping)
             if (trip.stops.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
@@ -220,18 +272,26 @@ fun HeroTripCard(
                     Text(
                         text = if (expandedStops) "收起时刻表" else "查看途经时刻表 (${trip.stops.size} 站)",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
                     )
                     Icon(
                         imageVector = if (expandedStops) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
                     )
                 }
 
                 AnimatedVisibility(visible = expandedStops) {
                     Column(modifier = Modifier.padding(top = 8.dp)) {
                         trip.stops.forEach { stop ->
+                            val isStart = stop.arriveTime == "----" || stop.arriveTime.isBlank()
+                            val isEnd = stop.startTime == "----" || stop.startTime.isBlank()
+                            val timeDesc = when {
+                                isStart -> "始发 · ${stop.startTime} 开"
+                                isEnd -> "终到 · ${stop.arriveTime} 到"
+                                else -> "到 ${stop.arriveTime} · 发 ${stop.startTime} (${stop.stopoverTime})"
+                            }
+
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -243,17 +303,17 @@ fun HeroTripCard(
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(0.42f)
                                 )
                                 Text(
-                                    text = "到 ${stop.arriveTime} · 发 ${stop.startTime} (${stop.stopoverTime})",
+                                    text = timeDesc,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(0.58f),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.End
+                                    textAlign = TextAlign.End
                                 )
                             }
                         }
@@ -263,7 +323,9 @@ fun HeroTripCard(
 
             // Action row: 12306 Official Link & Archive/Delete
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (trip.detailUrl.isNotBlank()) {
@@ -281,7 +343,7 @@ fun HeroTripCard(
                         }
                     ) {
                         Text(
-                            text = "查看 12306 详情 ↗",
+                            text = "12306 详情 ↗",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -291,18 +353,20 @@ fun HeroTripCard(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                IconButton(onClick = onArchive) {
-                    Icon(
-                        imageVector = Icons.Default.Archive,
-                        contentDescription = "归档行程",
-                        tint = MaterialTheme.colorScheme.outline
-                    )
+                if (!isCompleted) {
+                    IconButton(onClick = onArchive) {
+                        Icon(
+                            imageVector = Icons.Default.Archive,
+                            contentDescription = "归档行程",
+                            tint = MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
                 IconButton(onClick = onDelete) {
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "删除行程",
-                        tint = MaterialTheme.colorScheme.error
+                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
                     )
                 }
             }

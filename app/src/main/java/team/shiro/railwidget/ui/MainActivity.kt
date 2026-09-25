@@ -508,14 +508,18 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                                 items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
-                                    HistoryTripItem(
+                                    HeroTripCard(
                                         trip = trip,
+                                        onArchive = {
+                                            db.setArchived(trip.orderNo, true)
+                                            reloadTrips()
+                                        },
                                         onDelete = {
                                             db.deleteTrip(trip.orderNo)
                                             reloadTrips()
                                         }
                                     )
-                                    HorizontalDivider()
+                                    Spacer(modifier = Modifier.height(12.dp))
                                 }
                             }
                         }
@@ -565,7 +569,7 @@ class MainActivity : ComponentActivity() {
                     }
 
                     2 -> {
-                        // TAB 2: 已结束
+                        // TAB 2: 已结束 (统一使用 HeroTripCard)
                         if (completedTrips.isEmpty()) {
                             item {
                                 CompletedEmptyCard()
@@ -588,14 +592,15 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             items(completedTrips, key = { it.orderNo }) { trip ->
-                                HistoryTripItem(
+                                HeroTripCard(
                                     trip = trip,
+                                    onArchive = {},
                                     onDelete = {
                                         db.deleteTrip(trip.orderNo)
                                         reloadTrips()
                                     }
                                 )
-                                HorizontalDivider()
+                                Spacer(modifier = Modifier.height(12.dp))
                             }
                         }
                     }
