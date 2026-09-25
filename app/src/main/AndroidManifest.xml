@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
 
     <application
         android:name=".RailWidgetApp"
@@ -28,19 +29,15 @@
             </intent-filter>
         </activity>
 
-        <!-- 2x2 Widget Receiver (Supports Xiaomi / MIUI Widget Center & Standard Android AppWidget) -->
+        <!-- 2x2 Widget Receiver (Standard Android AppWidget) -->
         <receiver
             android:name=".widget.TripWidget2x2Receiver"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name">
+            android:label="@string/widget_2x2_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
-            <!-- 标识为小米小部件以在 MIUI 14 / HyperOS 小部件中心展示 -->
-            <meta-data
-                android:name="miuiWidget"
-                android:value="true" />
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/trip_widget_2x2_info" />
@@ -51,13 +48,10 @@
             android:name=".widget.TripWidget4x2Receiver"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name">
+            android:label="@string/widget_4x2_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
-            <meta-data
-                android:name="miuiWidget"
-                android:value="true" />
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/trip_widget_4x2_info" />
@@ -68,13 +62,10 @@
             android:name=".widget.TripWidget4x4Receiver"
             android:exported="true"
             android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name">
+            android:label="@string/widget_4x4_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
-            <meta-data
-                android:name="miuiWidget"
-                android:value="true" />
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/trip_widget_4x4_info" />

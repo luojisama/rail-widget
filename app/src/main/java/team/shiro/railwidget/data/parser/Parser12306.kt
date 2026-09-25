@@ -162,7 +162,7 @@ object Parser12306 {
             depStation = "出发站"
         }
         if (arrStation.isBlank()) {
-            arrStation = "以12306终点为准"
+            arrStation = "终点站"
         }
 
         // 4. 详情短链接 (如 s.12306.cn/s/g/kQwueJ)

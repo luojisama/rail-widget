@@ -28,7 +28,7 @@ object UpdateChecker {
         .build()
 
     private const val GITHUB_REPO = "luojisama/rail-widget"
-    private const val CURRENT_VERSION = "1.0.1"
+    private const val CURRENT_VERSION = "1.0.2"
 
     // 国内高速 GitHub 加速镜像源列表
     val MIRROR_PREFIXES = listOf(

@@ -35,15 +35,26 @@ object RailwayApiService {
             }
 
             // Find arrival station in stops list
-            val targetArrStation = trip.arrivalStation.replace("站", "").trim()
-            val matchedStop = stops.find {
-                it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
-            }
-
             val targetDepStation = trip.departureStation.replace("站", "").trim()
             val matchedDepStop = stops.find {
                 it.stationName.replace("站", "").trim().equals(targetDepStation, ignoreCase = true)
             }
+
+            val isArrStationPlaceholder = trip.arrivalStation.isBlank() ||
+                    trip.arrivalStation == "到达站" ||
+                    trip.arrivalStation == "终点站" ||
+                    trip.arrivalStation.contains("12306")
+
+            val effectiveArrStation = if (isArrStationPlaceholder && stops.isNotEmpty()) {
+                stops.last().stationName
+            } else {
+                trip.arrivalStation
+            }
+
+            val targetArrStation = effectiveArrStation.replace("站", "").trim()
+            val matchedStop = stops.find {
+                it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
+            } ?: stops.lastOrNull()
 
             val actualDepTime = if (matchedDepStop != null && matchedDepStop.startTime != "----") {
                 matchedDepStop.startTime
@@ -53,6 +64,8 @@ object RailwayApiService {
 
             val actualArrTime = if (matchedStop != null && matchedStop.arriveTime != "----") {
                 matchedStop.arriveTime
+            } else if (matchedStop != null && matchedStop.startTime != "----") {
+                matchedStop.startTime
             } else {
                 trip.arrivalTime
             }
@@ -61,6 +74,8 @@ object RailwayApiService {
 
             return trip.copy(
                 trainNo = trainNo,
+                departureStation = matchedDepStop?.stationName ?: trip.departureStation,
+                arrivalStation = effectiveArrStation,
                 departureTime = actualDepTime,
                 arrivalTime = actualArrTime,
                 stopoverTime = stopover,

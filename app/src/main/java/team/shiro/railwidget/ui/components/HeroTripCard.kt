@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
@@ -103,7 +104,10 @@ fun HeroTripCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(horizontalAlignment = Alignment.Start) {
+                Column(
+                    horizontalAlignment = Alignment.Start,
+                    modifier = Modifier.widthIn(max = 120.dp)
+                ) {
                     Text(
                         text = trip.departureTime,
                         fontSize = 28.sp,
@@ -113,7 +117,9 @@ fun HeroTripCard(
                     Text(
                         text = trip.departureStation,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
 
@@ -121,7 +127,7 @@ fun HeroTripCard(
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = if (trip.stopoverTime.isNotBlank()) "停靠 ${trip.stopoverTime}" else "全程",
+                        text = if (trip.stopoverTime.isNotBlank()) "停靠 ${trip.stopoverTime}" else "直达/途经",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -134,7 +140,10 @@ fun HeroTripCard(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                Column(horizontalAlignment = Alignment.End) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.widthIn(max = 120.dp)
+                ) {
                     Text(
                         text = if (trip.arrivalTime.isNotBlank()) trip.arrivalTime else "--:--",
                         fontSize = 28.sp,
@@ -144,7 +153,9 @@ fun HeroTripCard(
                     Text(
                         text = trip.arrivalStation,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
             }
@@ -225,16 +236,24 @@ fun HeroTripCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 3.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
                                     text = "${stop.stationNo}. ${stop.stationName}",
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(0.42f)
                                 )
                                 Text(
-                                    text = "到: ${stop.arriveTime} | 发: ${stop.startTime} (${stop.stopoverTime})",
+                                    text = "到 ${stop.arriveTime} · 发 ${stop.startTime} (${stop.stopoverTime})",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(0.58f),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.End
                                 )
                             }
                         }

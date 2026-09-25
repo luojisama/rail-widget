@@ -34,12 +34,17 @@ fun HistoryTripItem(
         headlineContent = {
             Text(
                 text = "${trip.trainCode} · ${trip.departureStation} ➔ ${trip.arrivalStation}",
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         },
         supportingContent = {
+            val seatDisplay = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) "${trip.carriage} ${trip.seat}" else "详见凭证"
             Text(
-                text = "${trip.departureDate} ${trip.departureTime} | ${trip.carriage} ${trip.seat} | 检票口: ${trip.getCleanTicketGate()}"
+                text = "${trip.departureDate} ${trip.departureTime}  ${seatDisplay}  检票口: ${trip.getCleanTicketGate()}",
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         },
         trailingContent = {

@@ -829,6 +829,46 @@ private fun WidgetPinGuideCard(
             ) {
                 Text("添加 4×4 全景看板（含途经时刻表与刷新按钮）", fontSize = 12.sp)
             }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(10.dp))
+
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Column {
+                Text(
+                    text = "💡 小米 MIUI 14 / 澎湃 OS 提示：",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "长按桌面图标提示「该应用此版本没有小部件」，是因为该入口专供小米商店云端卡片。\n\n" +
+                            "添加本应用小部件的 2 种快捷方式：\n" +
+                            "方式 ①：点击下方「开启桌面权限」，允许本应用「桌面快捷方式」后，即可直接点击上方按钮由系统弹窗添加；\n" +
+                            "方式 ②：手机桌面双指捏合 ➔ 点击「添加小部件」➔ 滑动到最底部点击「支持全部应用」或「安卓小部件」，即可拖拽到桌面。",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    lineHeight = 18.sp
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        try {
+                            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            context.startActivity(intent)
+                        } catch (_: Exception) {}
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("前往开启「桌面快捷方式」权限 ↗", fontSize = 12.sp)
+                }
+            }
         }
     }
 }
