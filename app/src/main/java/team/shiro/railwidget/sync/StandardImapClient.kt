@@ -50,7 +50,7 @@ object StandardImapClient {
             inbox.open(Folder.READ_ONLY)
 
             val count = inbox.messageCount
-            val start = (count - 30).coerceAtLeast(1)
+            val start = (count - 150).coerceAtLeast(1)
             val messages = inbox.getMessages(start, count)
 
             for (msg in messages.reversed()) {

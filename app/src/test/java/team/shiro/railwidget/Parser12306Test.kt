@@ -117,6 +117,49 @@ class Parser12306Test {
         val mirrorUrl = team.shiro.railwidget.sync.UpdateChecker.getMirrorUrl(testUrl)
         org.junit.Assert.assertTrue(mirrorUrl.startsWith("https://ghfast.top/"))
     }
+
+    @Test
+    fun testSmsWithDepAndArrStationsAndTimes() {
+        val sms = "【铁路12306】订单号E123456789，张三您好，您购买9月25日G2次列车上海虹桥站14:00开、北京南站18:28到，06车01D号二等座，票价626.0元，检票口16A。祝您旅途愉快！"
+        val trip = Parser12306.parseSms(sms)
+        assertNotNull(trip)
+        trip!!
+
+        assertEquals("E123456789", trip.orderNo)
+        assertEquals("张三", trip.passengerName)
+        assertEquals("G2", trip.trainCode)
+        assertEquals("上海虹桥", trip.departureStation)
+        assertEquals("14:00", trip.departureTime)
+        assertEquals("北京南", trip.arrivalStation)
+        assertEquals("18:28", trip.arrivalTime)
+        assertEquals("06车", trip.carriage)
+        assertEquals("01D号", trip.seat)
+        assertEquals("二等座", trip.seatType)
+        assertEquals("626.0元", trip.price)
+        assertEquals("16A", trip.ticketGate)
+    }
+
+    @Test
+    fun testHistoricalSmsTimestampYearDeduction() {
+        // 模拟 2023年11月20日 接收到的购票短信，短信正文仅有“11月21日”
+        val cal = java.util.Calendar.getInstance()
+        cal.set(2023, java.util.Calendar.NOVEMBER, 20, 10, 0, 0)
+        val smsTimestamp = cal.timeInMillis
+
+        val sms = "【铁路12306】张三先生，您已购11月21日G1373次列车上海虹桥站08:30开、昆明南站19:15到，03车05A号二等座，订单号E888888888。"
+        val trip = Parser12306.parseSms(sms, smsTimestamp)
+        assertNotNull(trip)
+        trip!!
+
+        assertEquals("E888888888", trip.orderNo)
+        assertEquals("张三", trip.passengerName)
+        assertEquals("G1373", trip.trainCode)
+        assertEquals("2023-11-21", trip.departureDate)
+        assertEquals("上海虹桥", trip.departureStation)
+        assertEquals("08:30", trip.departureTime)
+        assertEquals("昆明南", trip.arrivalStation)
+        assertEquals("19:15", trip.arrivalTime)
+    }
 }
 
 

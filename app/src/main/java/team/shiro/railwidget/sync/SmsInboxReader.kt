@@ -17,9 +17,9 @@ object SmsInboxReader {
     )
 
     /**
-     * 读取系统短信收件箱中来自 12306 或正文包含 12306 的购票短信
+     * 读取系统短信收件箱中来自 12306 或正文包含铁路购票信息的短信（支持全量历史扫描）
      */
-    fun read12306SmsList(context: Context, limit: Int = 30): List<SmsRecord> {
+    fun read12306SmsList(context: Context, limit: Int = 500): List<SmsRecord> {
         val results = mutableListOf<SmsRecord>()
         try {
             val uri = Telephony.Sms.Inbox.CONTENT_URI
@@ -29,8 +29,9 @@ object SmsInboxReader {
                 Telephony.Sms.BODY,
                 Telephony.Sms.DATE
             )
-            val selection = "${Telephony.Sms.ADDRESS} LIKE ? OR ${Telephony.Sms.BODY} LIKE ?"
-            val selectionArgs = arrayOf("%12306%", "%12306%")
+            // 广泛匹配 12306、中国铁路、次列车、车票等短信特征
+            val selection = "${Telephony.Sms.ADDRESS} LIKE ? OR ${Telephony.Sms.BODY} LIKE ? OR ${Telephony.Sms.BODY} LIKE ? OR ${Telephony.Sms.BODY} LIKE ?"
+            val selectionArgs = arrayOf("%12306%", "%12306%", "%铁路%", "%次列车%")
             val sortOrder = "${Telephony.Sms.DATE} DESC LIMIT $limit"
 
             context.contentResolver.query(uri, projection, selection, selectionArgs, sortOrder)?.use { cursor ->
@@ -44,6 +45,12 @@ object SmsInboxReader {
                     val address = if (addrIdx != -1) cursor.getString(addrIdx) ?: "" else ""
                     val body = if (bodyIdx != -1) cursor.getString(bodyIdx) ?: "" else ""
                     val date = if (dateIdx != -1) cursor.getLong(dateIdx) else 0L
+
+                    // 过滤纯登录/验证码类短信，避免占用扫描配额
+                    if (body.contains("验证码") || body.contains("动态码") || body.contains("校验码")) {
+                        continue
+                    }
+
                     results.add(SmsRecord(id, address, body, date))
                 }
             }
@@ -54,17 +61,17 @@ object SmsInboxReader {
     }
 
     /**
-     * 一键读取并解析导入全部 12306 短信行程
+     * 一键读取并解析导入全部 12306 短信行程（包含未出行与历史行程）
      */
-    fun syncFromSmsInbox(context: Context, limit: Int = 30): List<Trip> {
+    fun syncFromSmsInbox(context: Context, limit: Int = 500): List<Trip> {
         val records = read12306SmsList(context, limit)
         val importedTrips = mutableListOf<Trip>()
         val db = TripDatabaseHelper.getInstance(context)
 
         for (record in records) {
-            val trip = Parser12306.parseSms(record.body)
+            val trip = Parser12306.parseSms(record.body, record.timestamp)
             if (trip != null) {
-                // 联动 12306 官方时刻表接口补全到站时间与途经站
+                // 联动 12306 官方时刻表接口补全到站时间与途经站（若为历史车次，接口无数据时保留已解析的到站信息）
                 val enriched = try {
                     RailwayApiService.enrichTrip(trip)
                 } catch (_: Exception) {

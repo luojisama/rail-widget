@@ -204,6 +204,26 @@ class MainActivity : ComponentActivity() {
             TripWidgetRenderer.updateAllWidgets(context)
         }
 
+        fun refreshTripTimetable(trip: Trip) {
+            scope.launch {
+                snackbarHostState.showSnackbar("正在查询 ${trip.trainCode} 沿途经停时刻表...")
+                val enriched = withContext(Dispatchers.IO) {
+                    try {
+                        RailwayApiService.enrichTrip(trip)
+                    } catch (_: Exception) {
+                        trip
+                    }
+                }
+                db.insertOrUpdateTrip(enriched)
+                reloadTrips()
+                if (enriched.stops.isNotEmpty()) {
+                    snackbarHostState.showSnackbar("已更新 ${trip.trainCode} 沿途 ${enriched.stops.size} 站经停时刻与停车时长")
+                } else {
+                    snackbarHostState.showSnackbar("未能获取到 ${trip.trainCode} 沿途时刻表（可能车次暂未开售或已停运）")
+                }
+            }
+        }
+
         // 短信权限请求启动器
         val smsPermissionLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.RequestPermission()
@@ -217,9 +237,16 @@ class MainActivity : ComponentActivity() {
                     isReadingSms = false
                     reloadTrips()
                     if (imported.isNotEmpty()) {
-                        snackbarHostState.showSnackbar("已成功读取并导入 ${imported.size} 条 12306 短信车票")
+                        val upcomingCount = imported.count { it.getStage() == TripStage.UPCOMING }
+                        val historyCount = imported.size - upcomingCount
+                        val desc = if (historyCount > 0) {
+                            "已成功读取并导入 ${imported.size} 条车票（含 ${historyCount} 条历史行程）"
+                        } else {
+                            "已成功读取并导入 ${imported.size} 条 12306 短信车票"
+                        }
+                        snackbarHostState.showSnackbar(desc)
                     } else {
-                        snackbarHostState.showSnackbar("未在收件箱中发现新的 12306 短信")
+                        snackbarHostState.showSnackbar("未在收件箱中发现新的 12306 短信车票")
                     }
                 }
             } else {
@@ -240,9 +267,16 @@ class MainActivity : ComponentActivity() {
                     isReadingSms = false
                     reloadTrips()
                     if (imported.isNotEmpty()) {
-                        snackbarHostState.showSnackbar("已成功读取并导入 ${imported.size} 条 12306 短信车票")
+                        val upcomingCount = imported.count { it.getStage() == TripStage.UPCOMING }
+                        val historyCount = imported.size - upcomingCount
+                        val desc = if (historyCount > 0) {
+                            "已成功读取并导入 ${imported.size} 条车票（含 ${historyCount} 条历史行程）"
+                        } else {
+                            "已成功读取并导入 ${imported.size} 条 12306 短信车票"
+                        }
+                        snackbarHostState.showSnackbar(desc)
                     } else {
-                        snackbarHostState.showSnackbar("未在收件箱中发现新的 12306 短信")
+                        snackbarHostState.showSnackbar("未在收件箱中发现新的 12306 短信车票")
                     }
                 }
             } else {
@@ -494,6 +528,9 @@ class MainActivity : ComponentActivity() {
                                     onDelete = {
                                         db.deleteTrip(upcomingTrips.first().orderNo)
                                         reloadTrips()
+                                    },
+                                    onRefreshTimetable = {
+                                        refreshTripTimetable(upcomingTrips.first())
                                     }
                                 )
                             }
@@ -517,6 +554,9 @@ class MainActivity : ComponentActivity() {
                                         onDelete = {
                                             db.deleteTrip(trip.orderNo)
                                             reloadTrips()
+                                        },
+                                        onRefreshTimetable = {
+                                            refreshTripTimetable(trip)
                                         }
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
@@ -561,6 +601,9 @@ class MainActivity : ComponentActivity() {
                                     onDelete = {
                                         db.deleteTrip(trip.orderNo)
                                         reloadTrips()
+                                    },
+                                    onRefreshTimetable = {
+                                        refreshTripTimetable(trip)
                                     }
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
@@ -598,6 +641,9 @@ class MainActivity : ComponentActivity() {
                                     onDelete = {
                                         db.deleteTrip(trip.orderNo)
                                         reloadTrips()
+                                    },
+                                    onRefreshTimetable = {
+                                        refreshTripTimetable(trip)
                                     }
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))

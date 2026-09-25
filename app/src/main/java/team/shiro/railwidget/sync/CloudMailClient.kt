@@ -94,7 +94,7 @@ object CloudMailClient {
      */
     fun fetchAllEmails(baseUrl: String, token: String): List<JSONObject> {
         val list = mutableListOf<JSONObject>()
-        val url = "$baseUrl/api/allEmail/list?size=30"
+        val url = "$baseUrl/api/allEmail/list?size=100"
 
         val request = Request.Builder()
             .url(url)
