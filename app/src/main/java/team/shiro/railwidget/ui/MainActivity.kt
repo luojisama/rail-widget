@@ -694,13 +694,13 @@ class MainActivity : ComponentActivity() {
                 isDownloading = isDownloadingUpdate,
                 downloadProgress = downloadProgress,
                 onDismiss = { updateInfo = null },
-                onDownloadAndInstall = { useMirror ->
+                onDownloadAndInstall = { preferredUrl ->
                     if (info.downloadUrl.isNotBlank()) {
                         scope.launch {
                             isDownloadingUpdate = true
                             downloadProgress = 0
                             val res = withContext(Dispatchers.IO) {
-                                UpdateChecker.downloadAndInstall(context, info.downloadUrl, useMirror) { progress ->
+                                UpdateChecker.downloadAndInstall(context, info.downloadUrl, preferredUrl) { progress ->
                                     downloadProgress = progress
                                 }
                             }
@@ -712,12 +712,12 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     } else {
-                        UpdateChecker.openBrowserDownload(context, info.htmlUrl, useMirror)
+                        UpdateChecker.openBrowserDownload(context, info.htmlUrl)
                         updateInfo = null
                     }
                 },
-                onOpenBrowser = { useMirror ->
-                    UpdateChecker.openBrowserDownload(context, info.htmlUrl, useMirror)
+                onOpenBrowser = { url ->
+                    UpdateChecker.openBrowserDownload(context, if (url.isNotBlank()) url else info.htmlUrl)
                     updateInfo = null
                 }
             )

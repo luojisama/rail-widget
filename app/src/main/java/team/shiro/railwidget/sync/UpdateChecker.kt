@@ -5,6 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -20,6 +24,17 @@ data class UpdateInfo(
     val hasUpdate: Boolean
 )
 
+data class MirrorNode(
+    val name: String,
+    val prefix: String
+)
+
+data class SpeedTestResult(
+    val nodeName: String,
+    val pingMs: Long,
+    val fullUrl: String
+)
+
 object UpdateChecker {
 
     private val client = OkHttpClient.Builder()
@@ -27,14 +42,23 @@ object UpdateChecker {
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    private const val GITHUB_REPO = "luojisama/rail-widget"
-    private const val CURRENT_VERSION = "1.0.2"
+    // 测速专用的轻量客户端，超短超时
+    private val speedTestClient = OkHttpClient.Builder()
+        .connectTimeout(2500, TimeUnit.MILLISECONDS)
+        .readTimeout(2500, TimeUnit.MILLISECONDS)
+        .followRedirects(true)
+        .build()
 
-    // 国内高速 GitHub 加速镜像源列表
-    val MIRROR_PREFIXES = listOf(
-        "https://ghfast.top/",
-        "https://ghproxy.net/",
-        "https://github.moeyy.xyz/"
+    private const val GITHUB_REPO = "luojisama/rail-widget"
+    private const val CURRENT_VERSION = "1.0.3"
+
+    // 常用多线加速镜像节点
+    val MIRROR_NODES = listOf(
+        MirrorNode("ghfast 节点 (国内多线)", "https://ghfast.top/"),
+        MirrorNode("ghproxy 节点 (高速镜像)", "https://ghproxy.net/"),
+        MirrorNode("moeyy 节点 (香港/亚太)", "https://github.moeyy.xyz/"),
+        MirrorNode("gh-proxy 节点 (备用容灾)", "https://gh-proxy.com/"),
+        MirrorNode("GitHub 官方原链 (直连)", "")
     )
 
     /**
@@ -85,8 +109,58 @@ object UpdateChecker {
 
     fun getMirrorUrl(originalUrl: String): String {
         if (originalUrl.isBlank()) return originalUrl
-        if (MIRROR_PREFIXES.any { originalUrl.startsWith(it) }) return originalUrl
-        return "${MIRROR_PREFIXES[0]}$originalUrl"
+        val candidate = MIRROR_NODES.firstOrNull { it.prefix.isNotBlank() }
+        val prefix = candidate?.prefix ?: "https://ghfast.top/"
+        if (MIRROR_NODES.any { it.prefix.isNotBlank() && originalUrl.startsWith(it.prefix) }) return originalUrl
+        return "$prefix$originalUrl"
+    }
+
+    /**
+     * 并发对所有候选线路进行 HTTP HEAD 探测，选出响应时间最短且可用的最快线路
+     */
+    suspend fun selectFastestMirror(originalDownloadUrl: String): SpeedTestResult = withContext(Dispatchers.IO) {
+        if (originalDownloadUrl.isBlank()) {
+            return@withContext SpeedTestResult("默认线路", 0, originalDownloadUrl)
+        }
+
+        val testJobs = MIRROR_NODES.map { node ->
+            async {
+                val fullUrl = if (node.prefix.isBlank()) originalDownloadUrl else "${node.prefix}$originalDownloadUrl"
+                val ping = pingNode(fullUrl)
+                SpeedTestResult(node.name, ping, fullUrl)
+            }
+        }
+
+        val results = testJobs.awaitAll()
+
+        // 优先选取有效响应（< 2500ms）且延迟最低的节点
+        val available = results.filter { it.pingMs < 2500 }
+        val best = available.minByOrNull { it.pingMs }
+            ?: results.minByOrNull { it.pingMs }
+            ?: SpeedTestResult("ghfast 节点 (国内多线)", 110, "${MIRROR_NODES[0].prefix}$originalDownloadUrl")
+
+        best
+    }
+
+    private fun pingNode(url: String): Long {
+        val start = System.currentTimeMillis()
+        return try {
+            val request = Request.Builder()
+                .url(url)
+                .head()
+                .header("User-Agent", "RailCard-SpeedTest")
+                .build()
+
+            speedTestClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful || response.code in 200..399) {
+                    System.currentTimeMillis() - start
+                } else {
+                    Long.MAX_VALUE
+                }
+            }
+        } catch (_: Exception) {
+            Long.MAX_VALUE
+        }
     }
 
     fun checkUpdate(): Result<UpdateInfo> {
@@ -140,17 +214,22 @@ object UpdateChecker {
 
     fun downloadAndInstall(
         context: Context,
-        downloadUrl: String,
-        useMirror: Boolean = true,
+        originalDownloadUrl: String,
+        preferredUrl: String? = null,
         onProgress: (Int) -> Unit
     ): Result<File> {
         val candidateUrls = mutableListOf<String>()
-        if (useMirror && downloadUrl.startsWith("http")) {
-            for (prefix in MIRROR_PREFIXES) {
-                candidateUrls.add("$prefix$downloadUrl")
+        if (!preferredUrl.isNullExempt()) {
+            candidateUrls.add(preferredUrl!!)
+        }
+
+        // 加入所有备用镜像
+        for (node in MIRROR_NODES) {
+            val fullUrl = if (node.prefix.isBlank()) originalDownloadUrl else "${node.prefix}$originalDownloadUrl"
+            if (!candidateUrls.contains(fullUrl)) {
+                candidateUrls.add(fullUrl)
             }
         }
-        candidateUrls.add(downloadUrl)
 
         var lastError: Exception? = null
 
@@ -171,6 +250,8 @@ object UpdateChecker {
 
         return Result.failure(lastError ?: Exception("所有线路下载均失败，请尝试网页下载"))
     }
+
+    private fun String?.isNullExempt(): Boolean = this == null || this.isBlank()
 
     private fun downloadFromUrl(
         context: Context,
@@ -229,9 +310,8 @@ object UpdateChecker {
         context.startActivity(installIntent)
     }
 
-    fun openBrowserDownload(context: Context, url: String, useMirror: Boolean = false) {
-        val finalUrl = if (useMirror) getMirrorUrl(url) else url
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(finalUrl)).apply {
+    fun openBrowserDownload(context: Context, url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
         context.startActivity(intent)

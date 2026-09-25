@@ -1,6 +1,6 @@
 # 铁行卡片 (RailCard)
 
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/luojisama/rail-widget?color=005ac1)](https://github.com/luojisama/rail-widget/releases)
 
 基于 12306 官方票务邮件与短信智能解析的现代 Android 桌面行程小部件应用，专为经常乘坐高铁路网出行的旅客设计。
@@ -32,4 +32,4 @@
 
 ## 开源协议
 
-本项目采用 [Apache License 2.0](LICENSE) 协议开源。
+本项目采用 [MIT License](LICENSE) 协议开源。
