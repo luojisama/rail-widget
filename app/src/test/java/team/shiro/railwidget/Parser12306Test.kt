@@ -94,5 +94,29 @@ class Parser12306Test {
         assertEquals("上海虹桥", trip.departureStation)
         assertEquals("08:50", trip.departureTime)
     }
+
+    @Test
+    fun testFormatReleaseNotesAndMirrors() {
+        val rawMd = """
+            ### 🚄 铁行卡片 v1.0.1 更新日志
+            #### ✨ 新增特性
+            - **更名优化**：正式命名为`铁行卡片`
+            - **短信同步**：支持主动扫描
+            1. 第一项说明
+        """.trimIndent()
+
+        val formatted = team.shiro.railwidget.sync.UpdateChecker.formatReleaseNotes(rawMd)
+        // 验证不再包含 ###, **, ` 等 markdown 标记
+        org.junit.Assert.assertFalse(formatted.contains("###"))
+        org.junit.Assert.assertFalse(formatted.contains("**"))
+        org.junit.Assert.assertFalse(formatted.contains("`"))
+        org.junit.Assert.assertTrue(formatted.contains("• 更名优化：正式命名为铁行卡片"))
+
+        // 验证镜像生成
+        val testUrl = "https://github.com/luojisama/rail-widget/releases/download/v1.0.1/test.apk"
+        val mirrorUrl = team.shiro.railwidget.sync.UpdateChecker.getMirrorUrl(testUrl)
+        org.junit.Assert.assertTrue(mirrorUrl.startsWith("https://ghfast.top/"))
+    }
 }
+
 
