@@ -58,7 +58,7 @@ private val DarkColorScheme = darkColorScheme(
 @Composable
 fun RailWidgetTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

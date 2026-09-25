@@ -66,25 +66,20 @@ fun HeroTripCard(
     val stage = trip.getStage()
     val isCompleted = stage == TripStage.COMPLETED
     val isInTransit = stage == TripStage.IN_TRANSIT
-    var isExpandedTable by remember { mutableStateOf(true) }
+    // 历史已结束行程默认折叠表格，避免大表格霸屏；未出行或进行中行程可展开浏览
+    var isExpandedTable by remember(trip.orderNo) { mutableStateOf(!isCompleted && trip.stops.size > 2) }
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = if (isCompleted) {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            )
-        } else {
-            CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            )
-        },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
         elevation = CardDefaults.cardElevation(defaultElevation = if (isCompleted) 1.dp else 2.dp),
         border = BorderStroke(
             1.dp,
-            if (isCompleted) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-            else MaterialTheme.colorScheme.outlineVariant
+            if (isCompleted) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.8f)
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -96,9 +91,10 @@ fun HeroTripCard(
             ) {
                 // 车次大徽标
                 val badgeBg = when {
-                    isCompleted -> MaterialTheme.colorScheme.outline
-                    isInTransit -> Color(0xFF006874)
-                    else -> MaterialTheme.colorScheme.primary
+                    isCompleted -> Color(0xFF64748B)
+                    isInTransit -> Color(0xFF0F766E)
+                    trip.trainCode.startsWith("G") || trip.trainCode.startsWith("D") || trip.trainCode.startsWith("C") -> Color(0xFF0284C7)
+                    else -> Color(0xFF2563EB)
                 }
                 Surface(
                     shape = RoundedCornerShape(8.dp),
@@ -118,7 +114,7 @@ fun HeroTripCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = getTrainCategory(trip.trainCode),
-                            color = Color.White.copy(alpha = 0.85f),
+                            color = Color.White.copy(alpha = 0.9f),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -132,15 +128,15 @@ fun HeroTripCard(
                     Text(
                         text = formatDisplayDate(trip.departureDate),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "乘车人: ${trip.passengerName}",
+                        text = "乘车人 · ${trip.passengerName}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = Color(0xFF94A3B8),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -153,11 +149,11 @@ fun HeroTripCard(
                     else -> trip.computeStatus()
                 }
                 val (statusBg, statusFg) = when (statusText) {
-                    "正在检票" -> Pair(Color(0xFFFFDAD6), Color(0xFFBA1A1A))
-                    "停止检票" -> Pair(Color(0xFFFFDCC1), Color(0xFFE25B00))
-                    "运行中" -> Pair(Color(0xFFBCEBEF), Color(0xFF006874))
-                    "已结束" -> Pair(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.outline)
-                    else -> Pair(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.colorScheme.onPrimaryContainer)
+                    "正在检票" -> Pair(Color(0xFFFEF2F2), Color(0xFFDC2626))
+                    "停止检票" -> Pair(Color(0xFFFFF7ED), Color(0xFFEA580C))
+                    "运行中" -> Pair(Color(0xFFF0FDF4), Color(0xFF16A34A))
+                    "已结束" -> Pair(Color(0xFFF1F5F9), Color(0xFF64748B))
+                    else -> Pair(Color(0xFFEFF6FF), Color(0xFF2563EB))
                 }
 
                 Surface(
@@ -191,13 +187,13 @@ fun HeroTripCard(
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
-                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
+                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = trip.departureStation,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -205,7 +201,7 @@ fun HeroTripCard(
 
                 // 中间运行图示与历时
                 Column(
-                    modifier = Modifier.padding(horizontal = 6.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     val durationText = calculateDuration(trip.departureTime, trip.arrivalTime)
@@ -214,7 +210,7 @@ fun HeroTripCard(
                             text = durationText,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.outline
+                            color = Color(0xFF64748B)
                         )
                     }
 
@@ -227,27 +223,27 @@ fun HeroTripCard(
                             modifier = Modifier
                                 .size(6.dp)
                                 .clip(CircleShape)
-                                .background(if (isInTransit) Color(0xFF006874) else MaterialTheme.colorScheme.primary)
+                                .background(if (isCompleted) Color(0xFF94A3B8) else if (isInTransit) Color(0xFF0F766E) else Color(0xFF0284C7))
                         )
                         Box(
                             modifier = Modifier
-                                .width(64.dp)
+                                .width(56.dp)
                                 .height(2.dp)
-                                .background(MaterialTheme.colorScheme.outlineVariant)
+                                .background(Color(0xFFCBD5E1))
                         )
                         Icon(
                             imageVector = Icons.Default.DirectionsTransit,
                             contentDescription = null,
-                            tint = if (isInTransit) Color(0xFF006874) else MaterialTheme.colorScheme.primary,
+                            tint = if (isCompleted) Color(0xFF94A3B8) else if (isInTransit) Color(0xFF0F766E) else Color(0xFF0284C7),
                             modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    val stopsCount = if (trip.stops.isNotEmpty()) "经停 ${trip.stops.size} 站" else "直达/途经"
+                    val stopsCount = if (trip.stops.isNotEmpty()) "经停 ${trip.stops.size} 站" else "区间车次"
                     Text(
                         text = stopsCount,
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline
+                        color = Color(0xFF94A3B8)
                     )
                 }
 
@@ -262,13 +258,13 @@ fun HeroTripCard(
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
-                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
+                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = trip.arrivalStation,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -281,8 +277,8 @@ fun HeroTripCard(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             ) {
                 Row(
                     modifier = Modifier
@@ -295,7 +291,7 @@ fun HeroTripCard(
                         Text(
                             text = "车厢座席",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
+                            color = Color(0xFF94A3B8)
                         )
                         val seatDisplay = when {
                             trip.carriage.isNotBlank() && trip.seat.isNotBlank() -> "${trip.carriage} ${trip.seat}"
@@ -307,7 +303,7 @@ fun HeroTripCard(
                             text = seatDisplay,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.ExtraBold,
-                            color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                            color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -318,13 +314,13 @@ fun HeroTripCard(
                         Text(
                             text = "席别",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
+                            color = Color(0xFF94A3B8)
                         )
                         Text(
                             text = trip.seatType,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -333,7 +329,7 @@ fun HeroTripCard(
                     if (gateCode.isNotBlank() && gateCode != "暂无") {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (isCompleted) MaterialTheme.colorScheme.surfaceVariant else Color(0xFFFFDAD6)
+                            color = if (isCompleted) Color(0xFFF1F5F9) else Color(0xFFFEF2F2)
                         ) {
                             Column(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
@@ -343,13 +339,13 @@ fun HeroTripCard(
                                     text = "检票口",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (isCompleted) MaterialTheme.colorScheme.outline else Color(0xFFBA1A1A)
+                                    color = if (isCompleted) Color(0xFF64748B) else Color(0xFFDC2626)
                                 )
                                 Text(
                                     text = gateCode,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = if (isCompleted) MaterialTheme.colorScheme.outline else Color(0xFFBA1A1A)
+                                    color = if (isCompleted) Color(0xFF64748B) else Color(0xFFDC2626)
                                 )
                             }
                         }
@@ -359,54 +355,68 @@ fun HeroTripCard(
                             Text(
                                 text = "票种",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.outline
+                                color = Color(0xFF94A3B8)
                             )
                             val priceOrType = if (trip.price.isNotBlank()) "${trip.ticketType} · ${trip.price}" else trip.ticketType
                             Text(
                                 text = priceOrType,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.outline
+                                color = Color(0xFF64748B)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // 4. 【核心需求】全卡面途经车站与停车时间表格 (Table)
-            Row(
+            // 4. 【核心需求】途径车站与停车时间表格折叠/展开栏
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { isExpandedTable = !isExpandedTable }
-                    .padding(vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { isExpandedTable = !isExpandedTable },
+                color = if (isExpandedTable) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f) else Color.Transparent
             ) {
-                Icon(
-                    imageVector = Icons.Default.Schedule,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                val tableTitle = if (trip.stops.isNotEmpty()) {
-                    "途径车站与停车时间表 (全线共 ${trip.stops.size} 站)"
-                } else {
-                    "途径车站时刻表 (区间两站)"
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp),
+                        tint = if (isCompleted) Color(0xFF94A3B8) else Color(0xFF0284C7)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    val tableTitle = if (trip.stops.isNotEmpty()) {
+                        "沿途经停站与停车时间表 (全线共 ${trip.stops.size} 站)"
+                    } else {
+                        "沿途经停站时刻表 (区间两站)"
+                    }
+                    Text(
+                        text = tableTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                    Text(
+                        text = if (isExpandedTable) "收起" else "展开",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFF94A3B8)
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Icon(
+                        imageVector = if (isExpandedTable) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = Color(0xFF94A3B8)
+                    )
                 }
-                Text(
-                    text = tableTitle,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (isCompleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                Icon(
-                    imageVector = if (isExpandedTable) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.outline
-                )
             }
 
             AnimatedVisibility(visible = isExpandedTable) {
@@ -604,7 +614,7 @@ fun TimetableTable(
                 val isKeyStop = isBoarding || isAlighting
 
                 val rowBg = when {
-                    isKeyStop && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                    isKeyStop && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
                     index % 2 == 1 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                     else -> Color.Transparent
                 }
@@ -621,38 +631,58 @@ fun TimetableTable(
                         text = stop.stationNo.padStart(2, '0'),
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace,
-                        color = if (isKeyStop) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        color = if (isKeyStop && !isCompleted) Color(0xFF0284C7) else Color(0xFF94A3B8),
                         fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Normal,
                         modifier = Modifier.weight(0.12f),
                         textAlign = TextAlign.Center
                     )
 
-                    // 车站名 (若为出发/到达乘降站，标注高亮小标)
+                    // 车站名 (出发/到达标注 [上车] / [下车] 胶囊)
                     Row(
                         modifier = Modifier.weight(0.32f),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isKeyStop && !isCompleted) {
-                            Box(
-                                modifier = Modifier
-                                    .padding(end = 4.dp)
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primary)
-                            )
-                        }
                         Text(
                             text = stop.stationName,
                             fontSize = 13.sp,
                             fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Medium,
                             color = when {
-                                isKeyStop && !isCompleted -> MaterialTheme.colorScheme.primary
-                                isCompleted -> MaterialTheme.colorScheme.outline
+                                isKeyStop && !isCompleted -> Color(0xFF0284C7)
+                                isCompleted -> Color(0xFF64748B)
                                 else -> MaterialTheme.colorScheme.onSurface
                             },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        if (isBoarding && !isCompleted) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFEFF6FF)
+                            ) {
+                                Text(
+                                    text = "上车",
+                                    fontSize = 9.sp,
+                                    color = Color(0xFF0284C7),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                )
+                            }
+                        } else if (isAlighting && !isCompleted) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFECFDF5)
+                            ) {
+                                Text(
+                                    text = "下车",
+                                    fontSize = 9.sp,
+                                    color = Color(0xFF059669),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
                     }
 
                     // 到站时间
@@ -665,7 +695,7 @@ fun TimetableTable(
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isKeyStop && !isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isKeyStop && !isCompleted) Color(0xFF0284C7) else if (isCompleted) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(0.20f),
                         textAlign = TextAlign.Center
                     )
@@ -680,7 +710,7 @@ fun TimetableTable(
                         fontSize = 12.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isKeyStop && !isCompleted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (isKeyStop && !isCompleted) Color(0xFF0284C7) else if (isCompleted) Color(0xFF94A3B8) else MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(0.20f),
                         textAlign = TextAlign.Center
                     )
@@ -688,13 +718,19 @@ fun TimetableTable(
                     // 停留时长
                     val dwellDisplay = when {
                         stop.stopoverTime == "始发" || stop.stopoverTime == "终到" -> "--"
-                        stop.stopoverTime.isNotBlank() -> stop.stopoverTime
+                        stop.stopoverTime.isNotBlank() -> {
+                            if (stop.stopoverTime.endsWith("分") || stop.stopoverTime.endsWith("分钟")) {
+                                "停${stop.stopoverTime}"
+                            } else {
+                                "${stop.stopoverTime}分"
+                            }
+                        }
                         else -> "--"
                     }
                     Text(
                         text = dwellDisplay,
-                        fontSize = 12.sp,
-                        color = if (isKeyStop) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        fontSize = 11.sp,
+                        color = if (isKeyStop && !isCompleted) Color(0xFF0284C7) else Color(0xFF94A3B8),
                         fontWeight = if (isKeyStop) FontWeight.SemiBold else FontWeight.Normal,
                         modifier = Modifier.weight(0.16f),
                         textAlign = TextAlign.Center

@@ -88,8 +88,8 @@ object Parser12306 {
         val orderMatcher = orderNoPattern.matcher(clean)
         val extractedOrderNo = if (orderMatcher.find()) orderMatcher.group(1) ?: "" else ""
 
-        // 匹配常见 12306 短信抬头: 【12306】李四购票成功，... 或 张三先生/女士
-        val namePattern = Pattern.compile("(?:【(?:12306|铁路12306)】\\s*)?([^\\s，,：:!！]+?)(?:购票成功|先生|女士|您好|已购)")
+        // 匹配常见 12306 短信抬头: 【12306】李四购票成功，... 或 张三先生/女士 或 改签成功
+        val namePattern = Pattern.compile("(?:【(?:12306|铁路12306)】\\s*)?([^\\s，,：:!！]+?)(?:购票成功|改签成功|先生|女士|您好|已购)")
         val nameMatcher = namePattern.matcher(clean)
         val passenger = if (nameMatcher.find()) {
             val n = nameMatcher.group(1)?.trim() ?: "乘客"
@@ -197,8 +197,8 @@ object Parser12306 {
             arrStation = "终点站"
         }
 
-        // 4. 详情短链接 (如 s.12306.cn/s/g/kQwueJ)
-        val urlPattern = Pattern.compile("(?i)(https?://)?(s\\.12306\\.cn/s/g/[A-Za-z0-9]+)")
+        // 4. 详情短链接 (如 s.12306.cn/s/g/kQwueJ, s.12306.cn/s/l/YK6xhV, s.12306.cn/s/m/SqQtQ3)
+        val urlPattern = Pattern.compile("(?i)(https?://)?(s\\.12306\\.cn/s/[a-z]/[A-Za-z0-9]+)")
         val urlMatcher = urlPattern.matcher(text)
         val detailUrl = if (urlMatcher.find()) {
             val raw = urlMatcher.group(0) ?: ""

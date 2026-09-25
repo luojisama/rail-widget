@@ -160,6 +160,36 @@ class Parser12306Test {
         assertEquals("昆明南", trip.arrivalStation)
         assertEquals("19:15", trip.arrivalTime)
     }
+
+    @Test
+    fun testUserScreenshotRealSms() {
+        val sms1 = "【12306】李四购票成功，8月15日D3236次，杭州东站13:20开。详情点击s.12306.cn/s/g/kQwueJ"
+        val trip1 = Parser12306.parseSms(sms1)
+        assertNotNull(trip1)
+        assertEquals("李四", trip1!!.passengerName)
+        assertEquals("D3236", trip1.trainCode)
+        assertEquals("杭州东", trip1.departureStation)
+        assertEquals("13:20", trip1.departureTime)
+        assertEquals("https://s.12306.cn/s/g/kQwueJ", trip1.detailUrl)
+
+        val sms2 = "【12306】李四改签成功，1月10日D274次，昆明站16:05开。详情点击s.12306.cn/s/l/PpXQoj"
+        val trip2 = Parser12306.parseSms(sms2)
+        assertNotNull(trip2)
+        assertEquals("李四", trip2!!.passengerName)
+        assertEquals("D274", trip2.trainCode)
+        assertEquals("昆明", trip2.departureStation)
+        assertEquals("16:05", trip2.departureTime)
+        assertEquals("https://s.12306.cn/s/l/PpXQoj", trip2.detailUrl)
+
+        val sms3 = "【12306】李四购票成功，2月23日C308次，普洱站10:49开。详情点击s.12306.cn/s/m/SqQtQ3"
+        val trip3 = Parser12306.parseSms(sms3)
+        assertNotNull(trip3)
+        assertEquals("李四", trip3!!.passengerName)
+        assertEquals("C308", trip3.trainCode)
+        assertEquals("普洱", trip3.departureStation)
+        assertEquals("10:49", trip3.departureTime)
+        assertEquals("https://s.12306.cn/s/m/SqQtQ3", trip3.detailUrl)
+    }
 }
 
 

@@ -345,7 +345,7 @@ class MainActivity : ComponentActivity() {
                     if (info != null && info.hasUpdate) {
                         updateInfo = info
                     } else {
-                        snackbarHostState.showSnackbar("当前已是最新版本 (v1.0.1)")
+                        snackbarHostState.showSnackbar("当前已是最新版本 (v1.0.6)")
                     }
                 } else {
                     snackbarHostState.showSnackbar("检查更新失败: ${result.exceptionOrNull()?.message}")
