@@ -1,12 +1,20 @@
 <resources>
     <string name="app_name">铁行卡片</string>
-    <string name="widget_2x2_name">车票磁贴 (2x2)</string>
-    <string name="widget_2x2_desc">显示车次、座位、检票口与出发时间</string>
-    <string name="widget_4x2_name">行程横卡 (4x2)</string>
-    <string name="widget_4x2_desc">通栏车票卡片，包含时刻、车次、座位及出行状态</string>
-    <string name="widget_4x4_name">全景看板 (4x4)</string>
-    <string name="widget_4x4_desc">完整车次时刻、经停站序列与手动刷新</string>
+    <string name="widget_2x2_name">铁行卡片·车票磁贴 (2×2)</string>
+    <string name="widget_2x2_desc">紧凑呈现车次、座位、检票口与发车时间</string>
+    <string name="widget_4x2_name">铁行卡片·行程横卡 (4×2 / 5×2)</string>
+    <string name="widget_4x2_desc">通栏车票卡片，自适应 4 列与 5 列网格，含票面时刻、座位与高亮检票口</string>
+    <string name="widget_4x4_name">铁行卡片·全景看板 (4×4 / 5×4)</string>
+    <string name="widget_4x4_desc">全景车次大卡，含规整经停时刻表、乘车人与内置一键刷新</string>
     <string name="sync_cloud_mail">邮箱同步</string>
     <string name="sync_imap">IMAP 邮箱同步</string>
     <string name="sync_sms">读取 12306 短信</string>
+
+    <!-- Shortcuts Strings -->
+    <string name="shortcut_add_4x2_short">添加横卡</string>
+    <string name="shortcut_add_4x2_long">添加行程横卡 (4×2 / 5×2)</string>
+    <string name="shortcut_add_2x2_short">添加磁贴</string>
+    <string name="shortcut_add_2x2_long">添加车票磁贴 (2×2)</string>
+    <string name="shortcut_sync_sms_short">同步短信</string>
+    <string name="shortcut_sync_sms_long">读取 12306 短信行程</string>
 </resources>

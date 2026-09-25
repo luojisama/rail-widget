@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Material 3 Railway Theme Colors (Night Mode) -->
+    <color name="rail_primary">#AEC6FF</color>
+    <color name="rail_on_primary">#002E6C</color>
+    <color name="rail_primary_container">#004396</color>
+    <color name="rail_on_primary_container">#D8E2FF</color>
+
+    <!-- Ticket Gate Highlight Colors (Night Mode) -->
+    <color name="rail_gate_bg">#44231E</color>
+    <color name="rail_gate_border">#85382E</color>
+    <color name="rail_gate_text">#FFB4AB</color>
+
+    <!-- Status Badge Colors (Night Mode) -->
+    <color name="rail_status_waiting_bg">#253245</color>
+    <color name="rail_status_waiting_text">#AEC6FF</color>
+    <color name="rail_status_boarding_bg">#4A2322</color>
+    <color name="rail_status_boarding_text">#FFB4AB</color>
+    <color name="rail_status_intransit_bg">#1E3B5E</color>
+    <color name="rail_status_intransit_text">#A5CCFF</color>
+
+    <!-- Card Background & Text Hierarchy (Night Mode) -->
+    <color name="widget_card_bg">#1D2024</color>
+    <color name="widget_card_border">#33363B</color>
+    <color name="widget_text_primary">#E2E2E6</color>
+    <color name="widget_text_secondary">#C4C6D0</color>
+    <color name="widget_text_tertiary">#8E9099</color>
+    <color name="widget_text_route_arrow">#6B707B</color>
+</resources>

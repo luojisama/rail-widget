@@ -19,7 +19,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
         android:text="暂无出行计划"
-        android:textColor="#1A1C1E"
+        android:textColor="@color/widget_text_primary"
         android:textSize="14sp"
         android:textStyle="bold" />
 
@@ -28,7 +28,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
         android:text="点击同步 12306 邮件或短信"
-        android:textColor="#73777F"
+        android:textColor="@color/widget_text_tertiary"
         android:textSize="12sp" />
 
 </LinearLayout>

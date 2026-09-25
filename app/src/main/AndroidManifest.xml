@@ -27,12 +27,18 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- App Shortcuts for desktop long-press -->
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
-        <!-- 2x2 Widget Receiver (Standard Android AppWidget) -->
+        <!-- 2x2 Widget Receiver (Isolated Widget Process) -->
         <receiver
             android:name=".widget.TripWidget2x2Receiver"
             android:exported="true"
+            android:process=":widgetProvider"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/widget_2x2_name">
             <intent-filter>
@@ -43,10 +49,11 @@
                 android:resource="@xml/trip_widget_2x2_info" />
         </receiver>
 
-        <!-- 4x2 Widget Receiver -->
+        <!-- 4x2 Widget Receiver (Isolated Widget Process) -->
         <receiver
             android:name=".widget.TripWidget4x2Receiver"
             android:exported="true"
+            android:process=":widgetProvider"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/widget_4x2_name">
             <intent-filter>
@@ -57,10 +64,11 @@
                 android:resource="@xml/trip_widget_4x2_info" />
         </receiver>
 
-        <!-- 4x4 Widget Receiver -->
+        <!-- 4x4 Widget Receiver (Isolated Widget Process) -->
         <receiver
             android:name=".widget.TripWidget4x4Receiver"
             android:exported="true"
+            android:process=":widgetProvider"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/widget_4x4_name">
             <intent-filter>

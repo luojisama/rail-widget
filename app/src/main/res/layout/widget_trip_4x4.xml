@@ -5,7 +5,10 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_widget_card"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:paddingLeft="16dp"
+    android:paddingTop="14dp"
+    android:paddingRight="16dp"
+    android:paddingBottom="14dp">
 
     <!-- Header: Train Code, Date, Passenger, Refresh Button -->
     <LinearLayout
@@ -19,10 +22,12 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_train_badge"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
+            android:paddingLeft="8dp"
+            android:paddingTop="4dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="4dp"
             android:text="C315"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/rail_on_primary"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -30,20 +35,28 @@
             android:id="@+id/tv_passenger"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
             android:layout_marginStart="8dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:singleLine="true"
             android:text="乘车人"
-            android:textColor="#43474E"
-            android:textSize="14sp"
+            android:textColor="@color/widget_text_secondary"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tv_date"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:singleLine="true"
             android:text="2026-09-25"
-            android:textColor="#73777F"
+            android:textColor="@color/widget_text_tertiary"
             android:textSize="13sp" />
 
         <!-- Refresh Button -->
@@ -52,10 +65,12 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_status_pill"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp"
+            android:paddingLeft="10dp"
+            android:paddingTop="4dp"
+            android:paddingRight="10dp"
+            android:paddingBottom="4dp"
             android:text="⟳ 刷新"
-            android:textColor="#005AC1"
+            android:textColor="@color/rail_primary"
             android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
@@ -70,8 +85,10 @@
 
         <!-- Dep Info -->
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="start|center_vertical"
             android:orientation="vertical">
 
             <TextView
@@ -79,7 +96,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="16:00"
-                android:textColor="#1A1C1E"
+                android:textColor="@color/widget_text_primary"
                 android:textSize="26sp"
                 android:textStyle="bold" />
 
@@ -87,16 +104,21 @@
                 android:id="@+id/tv_dep_station"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
                 android:text="昆明南站"
-                android:textColor="#43474E"
-                android:textSize="14sp" />
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <!-- Center Indicator -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_marginLeft="6dp"
+            android:layout_marginRight="6dp"
             android:gravity="center"
             android:orientation="vertical">
 
@@ -105,10 +127,12 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_status_pill"
-                android:paddingHorizontal="8dp"
-                android:paddingVertical="2dp"
+                android:paddingLeft="8dp"
+                android:paddingTop="2dp"
+                android:paddingRight="8dp"
+                android:paddingBottom="2dp"
                 android:text="候车中"
-                android:textColor="#005AC1"
+                android:textColor="@color/rail_status_waiting_text"
                 android:textSize="11sp"
                 android:textStyle="bold" />
 
@@ -116,15 +140,16 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="────────➔"
-                android:textColor="#C4C6D0"
+                android:textColor="@color/widget_text_route_arrow"
                 android:textSize="12sp" />
         </LinearLayout>
 
         <!-- Arr Info -->
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:gravity="end"
+            android:layout_weight="1"
+            android:gravity="end|center_vertical"
             android:orientation="vertical">
 
             <TextView
@@ -132,7 +157,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="18:38"
-                android:textColor="#1A1C1E"
+                android:textColor="@color/widget_text_primary"
                 android:textSize="26sp"
                 android:textStyle="bold" />
 
@@ -140,9 +165,13 @@
                 android:id="@+id/tv_arr_station"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
                 android:text="普洱站"
-                android:textColor="#43474E"
-                android:textSize="14sp" />
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
 
@@ -150,20 +179,21 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:background="#EFF1F9"
+        android:layout_marginTop="10dp"
         android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:padding="10dp">
+        android:orientation="horizontal">
 
         <TextView
             android:id="@+id/tv_seat_detail"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:singleLine="true"
             android:text="6车 1D号 · 二等座"
-            android:textColor="#1A1C1E"
-            android:textSize="14sp"
+            android:textColor="@color/widget_text_primary"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
@@ -171,11 +201,16 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_badge_gate"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:paddingLeft="9dp"
+            android:paddingTop="4dp"
+            android:paddingRight="9dp"
+            android:paddingBottom="4dp"
+            android:singleLine="true"
             android:text="检票口 16A"
-            android:textColor="#BA1A1A"
-            android:textSize="14sp"
+            android:textColor="@color/rail_gate_text"
+            android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -185,8 +220,9 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="10dp"
         android:text="途经时刻表"
-        android:textColor="#73777F"
-        android:textSize="12sp" />
+        android:textColor="@color/widget_text_tertiary"
+        android:textSize="12sp"
+        android:textStyle="bold" />
 
     <TextView
         android:id="@+id/tv_stops_summary"
@@ -195,10 +231,10 @@
         android:layout_marginTop="4dp"
         android:layout_weight="1"
         android:ellipsize="end"
-        android:lineSpacingExtra="4dp"
+        android:lineSpacingExtra="3dp"
         android:maxLines="3"
-        android:text="昆明南 (16:00 开) ➔ 玉溪 (16:37) ➔ 化念 (17:04) ➔ 普洱 (18:38 到) ➔ 西双版纳"
-        android:textColor="#43474E"
+        android:text="始发 昆明南 (16:00)\n途中 玉溪 (16:37) ➔ 化念 (17:04)\n终到 普洱 (18:38)"
+        android:textColor="@color/widget_text_secondary"
         android:textSize="12sp" />
 
     <!-- Bottom Footnote -->
@@ -208,7 +244,7 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:text="点击小部件打开行程详情"
-        android:textColor="#8E9099"
+        android:textColor="@color/widget_text_tertiary"
         android:textSize="11sp" />
 
 </LinearLayout>

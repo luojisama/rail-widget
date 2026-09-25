@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:shortcutId="add_widget_4x2"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_add_4x2_short"
+        android:shortcutLongLabel="@string/shortcut_add_4x2_long">
+        <intent
+            android:action="team.shiro.railwidget.action.PIN_4X2"
+            android:targetPackage="team.shiro.railwidget"
+            android:targetClass="team.shiro.railwidget.ui.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="add_widget_2x2"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_add_2x2_short"
+        android:shortcutLongLabel="@string/shortcut_add_2x2_long">
+        <intent
+            android:action="team.shiro.railwidget.action.PIN_2X2"
+            android:targetPackage="team.shiro.railwidget"
+            android:targetClass="team.shiro.railwidget.ui.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="sync_sms"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_sync_sms_short"
+        android:shortcutLongLabel="@string/shortcut_sync_sms_long">
+        <intent
+            android:action="team.shiro.railwidget.action.SYNC_SMS"
+            android:targetPackage="team.shiro.railwidget"
+            android:targetClass="team.shiro.railwidget.ui.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+</shortcuts>

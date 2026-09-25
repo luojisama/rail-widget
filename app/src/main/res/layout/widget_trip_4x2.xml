@@ -5,9 +5,12 @@
     android:layout_height="match_parent"
     android:background="@drawable/bg_widget_card"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:paddingLeft="14dp"
+    android:paddingTop="12dp"
+    android:paddingRight="14dp"
+    android:paddingBottom="12dp">
 
-    <!-- Top Row: Route, Train Code, Status Pill -->
+    <!-- Top Row: Train Code, Date, Flexible Spacer, Status Pill -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,10 +22,12 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_train_badge"
-            android:paddingHorizontal="7dp"
-            android:paddingVertical="3dp"
+            android:paddingLeft="8dp"
+            android:paddingTop="3dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="3dp"
             android:text="C315"
-            android:textColor="#FFFFFF"
+            android:textColor="@color/rail_on_primary"
             android:textSize="13sp"
             android:textStyle="bold" />
 
@@ -30,12 +35,14 @@
             android:id="@+id/tv_date"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
             android:layout_marginStart="8dp"
             android:text="09-25"
-            android:textColor="#73777F"
+            android:textColor="@color/widget_text_tertiary"
             android:textSize="13sp" />
 
-        <View
+        <!-- RemoteViews-safe spacer (avoid pure View inflation error) -->
+        <FrameLayout
             android:layout_width="0dp"
             android:layout_height="1dp"
             android:layout_weight="1" />
@@ -45,15 +52,17 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_status_pill"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="3dp"
+            android:paddingLeft="9dp"
+            android:paddingTop="3dp"
+            android:paddingRight="9dp"
+            android:paddingBottom="3dp"
             android:text="候车中"
-            android:textColor="#005AC1"
+            android:textColor="@color/rail_status_waiting_text"
             android:textSize="12sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Middle: Station Times & Route -->
+    <!-- Middle: Station Times & Route (Adaptive Flex Weights for 4-col & 5-col) -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -61,10 +70,12 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Dep Info -->
+        <!-- Dep Info (Left side, weight 1) -->
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="start|center_vertical"
             android:orientation="vertical">
 
             <TextView
@@ -72,38 +83,46 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="16:00"
-                android:textColor="#1A1C1E"
-                android:textSize="20sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tv_dep_station"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:maxWidth="110dp"
-                android:singleLine="true"
-                android:maxLines="1"
                 android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
                 android:text="昆明南"
-                android:textColor="#43474E"
-                android:textSize="13sp" />
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
-        <!-- Arrow in middle -->
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="➔"
-            android:textColor="#73777F"
-            android:textSize="18sp" />
-
-        <!-- Arr Info -->
+        <!-- Route Direction Indicator (Center) -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="end"
+            android:layout_marginLeft="6dp"
+            android:layout_marginRight="6dp"
+            android:gravity="center"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="──────➔"
+                android:textColor="@color/widget_text_route_arrow"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- Arr Info (Right side, weight 1) -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="end|center_vertical"
             android:orientation="vertical">
 
             <TextView
@@ -111,25 +130,25 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="18:38"
-                android:textColor="#1A1C1E"
-                android:textSize="20sp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tv_arr_station"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:maxWidth="110dp"
-                android:singleLine="true"
-                android:maxLines="1"
                 android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
                 android:text="普洱"
-                android:textColor="#43474E"
-                android:textSize="13sp" />
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Bottom Row: Carriage/Seat, Ticket Gate, Passenger -->
+    <!-- Bottom Row: Carriage/Seat Detail & Ticket Gate Badge -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -141,11 +160,11 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:singleLine="true"
-            android:maxLines="1"
             android:ellipsize="end"
+            android:maxLines="1"
+            android:singleLine="true"
             android:text="6车 1D号 · 二等座"
-            android:textColor="#1A1C1E"
+            android:textColor="@color/widget_text_primary"
             android:textSize="13sp"
             android:textStyle="bold" />
 
@@ -154,10 +173,15 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:background="@drawable/bg_badge_gate"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="3dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:paddingLeft="9dp"
+            android:paddingTop="4dp"
+            android:paddingRight="9dp"
+            android:paddingBottom="4dp"
+            android:singleLine="true"
             android:text="检票口 16A"
-            android:textColor="#BA1A1A"
+            android:textColor="@color/rail_gate_text"
             android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>

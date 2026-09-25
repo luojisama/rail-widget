@@ -1,6 +1,7 @@
 package team.shiro.railwidget.ui
 
 import android.Manifest
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
@@ -56,6 +58,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -98,9 +101,13 @@ import team.shiro.railwidget.widget.TripWidgetRenderer
 
 class MainActivity : ComponentActivity() {
 
+    private var pendingAction: String? = null
+    var onPinBlocked: (() -> Unit)? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        pendingAction = intent?.action
         setContent {
             RailWidgetTheme {
                 MainScreen()
@@ -108,13 +115,59 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun requestPinWidget(receiverClass: Class<*>) {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleShortcutAction(intent.action)
+    }
+
+    fun requestPinWidget(receiverClass: Class<*>) {
         val appWidgetManager = AppWidgetManager.getInstance(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && appWidgetManager.isRequestPinAppWidgetSupported) {
             val componentName = ComponentName(this, receiverClass)
-            appWidgetManager.requestPinAppWidget(componentName, null, null)
+            val callbackIntent = Intent(this, MainActivity::class.java).apply {
+                action = "team.shiro.railwidget.action.PIN_RESULT"
+            }
+            val successCallback = PendingIntent.getActivity(
+                this,
+                1002,
+                callbackIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val isAccepted = appWidgetManager.requestPinAppWidget(componentName, null, successCallback)
+            if (!isAccepted) {
+                onPinBlocked?.invoke()
+            }
         } else {
-            Toast.makeText(this, "当前系统不支持应用内直接添加，请长按桌面空白处手动添加小部件", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "当前系统不支持一键添加，请双指捏合桌面手动添加小部件", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun handleShortcutAction(action: String?) {
+        when (action) {
+            "team.shiro.railwidget.action.PIN_4X2" -> requestPinWidget(TripWidget4x2Receiver::class.java)
+            "team.shiro.railwidget.action.PIN_2X2" -> requestPinWidget(TripWidget2x2Receiver::class.java)
+        }
+    }
+
+    companion object {
+        fun openAppPermissions(context: Context) {
+            try {
+                // MIUI / HyperOS direct permissions editor
+                val miuiIntent = Intent("miui.intent.action.APP_PERM_EDITOR").apply {
+                    setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+                    putExtra("extra_pkgname", context.packageName)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                context.startActivity(miuiIntent)
+            } catch (_: Exception) {
+                try {
+                    val fallbackIntent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = android.net.Uri.fromParts("package", context.packageName, null)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(fallbackIntent)
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -133,6 +186,12 @@ class MainActivity : ComponentActivity() {
 
         var showImportDialog by remember { mutableStateOf(false) }
         var showSettingsDialog by remember { mutableStateOf(false) }
+        var showPinBlockedDialog by remember { mutableStateOf(false) }
+
+        // Bind pin blocked callback
+        onPinBlocked = {
+            showPinBlockedDialog = true
+        }
 
         // Update states
         var updateInfo by remember { mutableStateOf<UpdateInfo?>(null) }
@@ -193,6 +252,20 @@ class MainActivity : ComponentActivity() {
 
         LaunchedEffect(Unit) {
             reloadTrips()
+            when (pendingAction) {
+                "team.shiro.railwidget.action.PIN_4X2" -> {
+                    requestPinWidget(TripWidget4x2Receiver::class.java)
+                    pendingAction = null
+                }
+                "team.shiro.railwidget.action.PIN_2X2" -> {
+                    requestPinWidget(TripWidget2x2Receiver::class.java)
+                    pendingAction = null
+                }
+                "team.shiro.railwidget.action.SYNC_SMS" -> {
+                    triggerSmsSync()
+                    pendingAction = null
+                }
+            }
         }
 
         fun triggerMailSync() {
@@ -644,6 +717,37 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+
+        // MIUI/Android Pin Widget Blocked Dialog
+        if (showPinBlockedDialog) {
+            AlertDialog(
+                onDismissRequest = { showPinBlockedDialog = false },
+                title = { Text("小部件添加被系统拦截", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        text = "小米 MIUI 14 / 澎湃 OS 默认限制了第三方应用的「桌面快捷方式」权限。\n\n" +
+                                "解决方案：\n" +
+                                "1. 点击下方按钮进入权限管理，找到「桌面快捷方式」并选择【始终允许】；\n" +
+                                "2. 返回应用重新点击添加；\n" +
+                                "3. 或双指捏合手机桌面 ➔ 滑到底部「安卓小部件」手动拖拽。",
+                        lineHeight = 20.sp
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showPinBlockedDialog = false
+                        openAppPermissions(context)
+                    }) {
+                        Text("前往开启权限")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showPinBlockedDialog = false }) {
+                        Text("知道了")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -844,10 +948,11 @@ private fun WidgetPinGuideCard(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "长按桌面图标提示「该应用此版本没有小部件」，是因为该入口专供小米商店云端卡片。\n\n" +
-                            "添加本应用小部件的 2 种快捷方式：\n" +
-                            "方式 ①：点击下方「开启桌面权限」，允许本应用「桌面快捷方式」后，即可直接点击上方按钮由系统弹窗添加；\n" +
-                            "方式 ②：手机桌面双指捏合 ➔ 点击「添加小部件」➔ 滑动到最底部点击「支持全部应用」或「安卓小部件」，即可拖拽到桌面。",
+                    text = "长按桌面图标提示「该应用此版本没有小部件」，是因为该入口专供小米商店云端过审卡片。\n\n" +
+                            "添加本应用小部件的 2 种快捷途径：\n" +
+                            "• 途径 ①：在桌面长按本 App 图标，点击弹出的快捷菜单「添加横卡」或「添加磁贴」；\n" +
+                            "• 途径 ②：点击下方按钮开启权限后，点击上方「添加 4×2 横卡」，由系统弹窗直接一键添加；\n" +
+                            "• 途径 ③：桌面双指捏合 ➔ 添加小部件 ➔ 滑动到底部点击「安卓小部件」即可拖拽。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                     lineHeight = 18.sp
@@ -855,13 +960,7 @@ private fun WidgetPinGuideCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
-                        try {
-                            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = android.net.Uri.fromParts("package", context.packageName, null)
-                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            context.startActivity(intent)
-                        } catch (_: Exception) {}
+                        MainActivity.openAppPermissions(context)
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)

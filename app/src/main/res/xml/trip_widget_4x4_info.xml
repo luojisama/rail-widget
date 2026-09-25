@@ -4,12 +4,12 @@
     android:initialLayout="@layout/widget_trip_4x4"
     android:previewLayout="@layout/widget_trip_4x4"
     android:previewImage="@drawable/ic_launcher"
-    android:minWidth="260dp"
-    android:minHeight="260dp"
-    android:minResizeWidth="180dp"
-    android:minResizeHeight="180dp"
+    android:minWidth="250dp"
+    android:minHeight="220dp"
+    android:minResizeWidth="160dp"
+    android:minResizeHeight="160dp"
     android:targetCellWidth="4"
     android:targetCellHeight="4"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
-    android:widgetCategory="home_screen|keyguard" />
+    android:widgetCategory="home_screen" />

@@ -5,7 +5,6 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.view.View
 import android.widget.RemoteViews
 import team.shiro.railwidget.R
 import team.shiro.railwidget.data.local.TripDatabaseHelper
@@ -57,7 +56,12 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_train_code, trip.trainCode)
         views.setTextViewText(R.id.tv_dep_time, "${trip.departureTime} 开")
         views.setTextViewText(R.id.tv_route, "${trip.departureStation} ➔ ${trip.arrivalStation}")
-        views.setTextViewText(R.id.tv_seat, "${trip.carriage} ${trip.seat}")
+        val seatStr = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
+            "${trip.carriage} ${trip.seat}".trim()
+        } else {
+            "席位待出"
+        }
+        views.setTextViewText(R.id.tv_seat, seatStr)
 
         val gate = trip.getCleanTicketGate()
         views.setTextViewText(R.id.tv_gate, if (gate.isBlank()) "检票口 --" else gate)
@@ -85,11 +89,15 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_arr_time, arrTime)
         views.setTextViewText(R.id.tv_arr_station, trip.arrivalStation)
 
-        val seatDetail = "${trip.carriage} ${trip.seat} · ${trip.seatType}"
+        val seatDetail = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
+            "${trip.carriage} ${trip.seat} · ${trip.seatType}".trim()
+        } else {
+            "席位详见官方凭证 · ${trip.seatType}"
+        }
         views.setTextViewText(R.id.tv_seat_info, seatDetail)
 
         val gate = trip.getCleanTicketGate()
-        views.setTextViewText(R.id.tv_gate, if (gate.isBlank()) "检票口 未出" else "检票口 $gate")
+        views.setTextViewText(R.id.tv_gate, if (gate.isBlank() || gate == "暂无") "检票口 未出" else "检票口 $gate")
 
         views.setOnClickPendingIntent(R.id.widget_root, createOpenAppIntent(context, trip.orderNo))
         return views
@@ -115,20 +123,29 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_arr_time, arrTime)
         views.setTextViewText(R.id.tv_arr_station, trip.arrivalStation)
 
-        val seatDetail = "${trip.carriage} ${trip.seat} · ${trip.seatType} · ${trip.ticketType}"
+        val seatDetail = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
+            "${trip.carriage} ${trip.seat} · ${trip.seatType} · ${trip.ticketType}".trim()
+        } else {
+            "席位详见官方凭证 · ${trip.seatType} · ${trip.ticketType}"
+        }
         views.setTextViewText(R.id.tv_seat_detail, seatDetail)
 
         val gate = trip.getCleanTicketGate()
-        views.setTextViewText(R.id.tv_gate, if (gate.isBlank()) "检票口 未公布" else "检票口 $gate")
+        views.setTextViewText(R.id.tv_gate, if (gate.isBlank() || gate == "暂无") "检票口 未出" else "检票口 $gate")
 
-        // Build stops summary string
+        // Build clean multi-line stops summary to prevent awkward word wrapping
         val stopsSummary = if (trip.stops.isNotEmpty()) {
-            trip.stops.joinToString(" ➔ ") {
-                val timeInfo = if (it.startTime != "----") it.startTime else it.arriveTime
-                "${it.stationName} ($timeInfo)"
+            val firstStop = trip.stops.first()
+            val lastStop = trip.stops.last()
+            val midStops = trip.stops.drop(1).dropLast(1)
+            val midText = if (midStops.isNotEmpty()) {
+                midStops.take(2).joinToString(" ➔ ") { "${it.stationName} (${it.arriveTime})" }
+            } else {
+                "直达行程，无沿途停靠"
             }
+            "始发 ${firstStop.stationName} (${firstStop.startTime})\n途中 $midText\n终到 ${lastStop.stationName} (${lastStop.arriveTime})"
         } else {
-            "${trip.departureStation} (${trip.departureTime}) ➔ ... ➔ ${trip.arrivalStation} ($arrTime)"
+            "始发 ${trip.departureStation} (${trip.departureTime})\n途中 暂无经停站信息\n终到 ${trip.arrivalStation} ($arrTime)"
         }
         views.setTextViewText(R.id.tv_stops_summary, stopsSummary)
 
