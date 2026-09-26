@@ -69,11 +69,16 @@ data class Trip(
     private fun calculateTimes(): Pair<Long, Long> {
         return try {
             val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
-            val depFullStr = "$departureDate $departureTime"
+            val validDepTime = if (departureTime.isNotBlank() && departureTime != "--:--" && departureTime != "00:00") {
+                departureTime
+            } else {
+                "00:00"
+            }
+            val depFullStr = "$departureDate $validDepTime"
             val depDate = format.parse(depFullStr)
             val depMillis = depDate?.time ?: System.currentTimeMillis()
 
-            val arrMillis = if (arrivalTime.isNotBlank()) {
+            val arrMillis = if (arrivalTime.isNotBlank() && arrivalTime != "--:--" && arrivalTime != "00:00") {
                 val arrFullStr = "$departureDate $arrivalTime"
                 val parsedArr = format.parse(arrFullStr)?.time ?: (depMillis + 2 * 3600 * 1000)
                 // 若到站时间跨日（数字小于发车时间），按次日推算

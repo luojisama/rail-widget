@@ -54,10 +54,12 @@ object TripWidgetRenderer {
 
         val views = RemoteViews(context.packageName, R.layout.widget_trip_2x2)
         views.setTextViewText(R.id.tv_train_code, trip.trainCode)
-        views.setTextViewText(R.id.tv_dep_time, "${trip.departureTime} 开")
+        val depTime2x2 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else "${trip.departureTime} 开"
+        views.setTextViewText(R.id.tv_dep_time, depTime2x2)
         views.setTextViewText(R.id.tv_route, "${trip.departureStation} ➔ ${trip.arrivalStation}")
         val seatStr = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
-            "${trip.carriage} ${trip.seat}".trim()
+            val ticketTag = if (trip.ticketType == "列车补票") " (补)" else ""
+            "${trip.carriage} ${trip.seat}$ticketTag".trim()
         } else {
             "席位待出"
         }
@@ -82,17 +84,19 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_date, trip.departureDate.substringAfter("-"))
         views.setTextViewText(R.id.tv_status, trip.computeStatus())
 
-        views.setTextViewText(R.id.tv_dep_time, trip.departureTime)
+        val depTime4x2 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else trip.departureTime
+        views.setTextViewText(R.id.tv_dep_time, depTime4x2)
         views.setTextViewText(R.id.tv_dep_station, trip.departureStation)
 
-        val arrTime = if (trip.arrivalTime.isNotBlank()) trip.arrivalTime else "--:--"
+        val arrTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--"
         views.setTextViewText(R.id.tv_arr_time, arrTime)
         views.setTextViewText(R.id.tv_arr_station, trip.arrivalStation)
 
+        val ticketTag4x2 = if (trip.ticketType == "列车补票") " · 补票" else ""
         val seatDetail = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
-            "${trip.carriage} ${trip.seat} · ${trip.seatType}".trim()
+            "${trip.carriage} ${trip.seat} · ${trip.seatType}$ticketTag4x2".trim()
         } else {
-            "席位详见官方凭证 · ${trip.seatType}"
+            "席位详见官方凭证 · ${trip.seatType}$ticketTag4x2"
         }
         views.setTextViewText(R.id.tv_seat_info, seatDetail)
 
@@ -116,17 +120,19 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_date, trip.departureDate)
         views.setTextViewText(R.id.tv_status, trip.computeStatus())
 
-        views.setTextViewText(R.id.tv_dep_time, trip.departureTime)
+        val depTime4x4 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else trip.departureTime
+        views.setTextViewText(R.id.tv_dep_time, depTime4x4)
         views.setTextViewText(R.id.tv_dep_station, trip.departureStation)
 
-        val arrTime = if (trip.arrivalTime.isNotBlank()) trip.arrivalTime else "--:--"
+        val arrTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--"
         views.setTextViewText(R.id.tv_arr_time, arrTime)
         views.setTextViewText(R.id.tv_arr_station, trip.arrivalStation)
 
+        val fareAdjustmentTag = if (trip.ticketType == "列车补票" && trip.price.isNotBlank()) " (补差价 ${trip.price})" else ""
         val seatDetail = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
-            "${trip.carriage} ${trip.seat} · ${trip.seatType} · ${trip.ticketType}".trim()
+            "${trip.carriage} ${trip.seat} · ${trip.seatType} · ${trip.ticketType}$fareAdjustmentTag".trim()
         } else {
-            "席位详见官方凭证 · ${trip.seatType} · ${trip.ticketType}"
+            "席位详见官方凭证 · ${trip.seatType} · ${trip.ticketType}$fareAdjustmentTag"
         }
         views.setTextViewText(R.id.tv_seat_detail, seatDetail)
 

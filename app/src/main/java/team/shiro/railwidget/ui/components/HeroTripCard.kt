@@ -140,13 +140,30 @@ fun HeroTripCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Text(
-                        text = "乘车人 · ${trip.passengerName}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFF94A3B8),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "乘车人 · ${trip.passengerName}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF94A3B8),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (trip.ticketType.isNotBlank() && trip.ticketType != "成人票") {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = if (trip.ticketType.contains("补票")) Color(0xFFFEF3C7) else Color(0xFFEFF6FF)
+                            ) {
+                                Text(
+                                    text = trip.ticketType,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (trip.ticketType.contains("补票")) Color(0xFFD97706) else Color(0xFF2563EB),
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
                 }
 
                 // 状态指示药丸
@@ -189,8 +206,9 @@ fun HeroTripCard(
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.Start
                 ) {
+                    val depDisplay = if (trip.departureTime.isNotBlank() && trip.departureTime != "00:00") trip.departureTime else "--:--"
                     Text(
-                        text = trip.departureTime,
+                        text = depDisplay,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.Black,
                         fontFamily = FontFamily.Monospace,
@@ -259,7 +277,7 @@ fun HeroTripCard(
                     modifier = Modifier.weight(1f),
                     horizontalAlignment = Alignment.End
                 ) {
-                    val arrTime = if (trip.arrivalTime.isNotBlank()) trip.arrivalTime else "--:--"
+                    val arrTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--"
                     Text(
                         text = arrTime,
                         fontSize = 32.sp,
@@ -319,9 +337,9 @@ fun HeroTripCard(
                     // 席别
                     Column(modifier = Modifier.weight(0.9f)) {
                         Text(
-                            text = "席别",
+                            text = if (trip.ticketType == "列车补票") "席别 · 补票" else "席别",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Color(0xFF94A3B8)
+                            color = if (trip.ticketType == "列车补票") Color(0xFFD97706) else Color(0xFF94A3B8)
                         )
                         Text(
                             text = trip.seatType,
@@ -329,6 +347,17 @@ fun HeroTripCard(
                             fontWeight = FontWeight.SemiBold,
                             color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (trip.price.isNotBlank()) {
+                            val priceLabel = if (trip.ticketType == "列车补票") "补差价 ${trip.price}" else trip.price
+                            Text(
+                                text = priceLabel,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (trip.ticketType == "列车补票") Color(0xFFD97706) else Color(0xFF94A3B8),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
 
                     // 检票口 (醒目高亮，支持点击快速修改或从大屏重查)
@@ -696,13 +725,13 @@ fun TimetableTable(
                         stationNo = "01",
                         stationName = trip.departureStation,
                         arriveTime = "----",
-                        startTime = trip.departureTime,
+                        startTime = if (trip.departureTime.isNotBlank() && trip.departureTime != "00:00") trip.departureTime else "--:--",
                         stopoverTime = "始发"
                     ),
                     StopInfo(
                         stationNo = "02",
                         stationName = trip.arrivalStation,
-                        arriveTime = trip.arrivalTime.ifBlank { "--:--" },
+                        arriveTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--",
                         startTime = "----",
                         stopoverTime = "终到"
                     )
@@ -867,7 +896,7 @@ fun formatDisplayDate(dateStr: String): String {
  * 计算发到区间时长（例如 4时28分）
  */
 fun calculateDuration(depTime: String, arrTime: String): String {
-    if (depTime.isBlank() || arrTime.isBlank()) return ""
+    if (depTime.isBlank() || depTime == "00:00" || depTime == "--:--" || arrTime.isBlank() || arrTime == "--:--" || arrTime == "00:00") return ""
     return try {
         val depParts = depTime.split(":")
         val arrParts = arrTime.split(":")

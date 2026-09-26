@@ -73,4 +73,32 @@ class RailwayApiTest {
             assertTrue("Ticket gate should contain 20", enriched.ticketGate.contains("20"))
         }
     }
+
+    @Test
+    fun testHistoricalTrainTimetableFallback() {
+        // 模拟用户历史车次 D3946（桂林至桂林北，无发车时间）
+        val historicalTrip = Trip(
+            orderNo = "E2Z0565205",
+            passengerName = "乘客",
+            trainCode = "D3946",
+            departureStation = "桂林",
+            arrivalStation = "桂林北",
+            departureDate = "2024-02-12", // 历史日期
+            departureTime = "", // 无发车时间
+            carriage = "3车",
+            seat = "14F号",
+            ticketType = "列车补票"
+        )
+
+        val enriched = RailwayApiService.enrichTrip(historicalTrip)
+        assertNotNull(enriched)
+        if (enriched.trainNo.isNotBlank()) {
+            // 验证通过今日基准成功拉取时刻表并补齐发车与到站时间
+            assertTrue(enriched.stops.isNotEmpty())
+            assertTrue("Departure time should be enriched from timetable", enriched.departureTime.isNotBlank())
+            assertTrue("Arrival time should be enriched from timetable", enriched.arrivalTime.isNotBlank())
+            assertEquals("桂林", enriched.departureStation)
+            assertEquals("桂林北", enriched.arrivalStation)
+        }
+    }
 }

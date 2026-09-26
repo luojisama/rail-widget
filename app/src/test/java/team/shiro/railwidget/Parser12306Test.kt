@@ -205,6 +205,25 @@ class Parser12306Test {
         assertEquals("D274", trips[1].trainCode)
         assertEquals("C308", trips[2].trainCode)
     }
+
+    @Test
+    fun testTrainFareAdjustmentTicketSms() {
+        val sms = "【12306】E2Z0565205（列车补票），2月12日D3946次，桂林至桂林北，二等座3车14F号，补差价6.0元。补票信息可通过12306手机客户端“本人车票”功能查询，通过12306网站、车站售票窗口、自动售票机申领电子发票。"
+        val trip = Parser12306.parseSms(sms)
+        assertNotNull(trip)
+        trip!!
+
+        assertEquals("E2Z0565205", trip.orderNo)
+        assertEquals("D3946", trip.trainCode)
+        assertEquals("桂林", trip.departureStation)
+        assertEquals("桂林北", trip.arrivalStation)
+        assertEquals("3车", trip.carriage)
+        assertEquals("14F号", trip.seat)
+        assertEquals("二等座", trip.seatType)
+        assertEquals("列车补票", trip.ticketType)
+        assertEquals("6.0元", trip.price)
+        assertEquals("", trip.departureTime)
+    }
 }
 
 

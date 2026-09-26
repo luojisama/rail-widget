@@ -84,7 +84,7 @@ object Parser12306 {
      */
     fun parseSms(message: String, smsTimestamp: Long? = null): Trip? {
         val clean = message.trim()
-        val orderNoPattern = Pattern.compile("(?:订单号?[：:]?|订单)([A-Za-z0-9]{10})")
+        val orderNoPattern = Pattern.compile("(?:(?:订单号?[：:]?|订单号码?|订单)\\s*|【(?:12306|铁路12306)】\\s*)([A-Za-z0-9]{10})")
         val orderMatcher = orderNoPattern.matcher(clean)
         val extractedOrderNo = if (orderMatcher.find()) orderMatcher.group(1) ?: "" else ""
 
@@ -186,7 +186,7 @@ object Parser12306 {
 
         // 3. 出发站、到达站与发到时刻提取
         var depStation = ""
-        var depTime = "00:00"
+        var depTime = ""
         var arrStation = ""
         var arrTime = ""
 
@@ -198,7 +198,7 @@ object Parser12306 {
 
         if (fullTripMatcher.find()) {
             depStation = cleanStationName(fullTripMatcher.group(1) ?: "")
-            depTime = fullTripMatcher.group(2)?.trim() ?: "00:00"
+            depTime = fullTripMatcher.group(2)?.trim() ?: ""
             arrStation = cleanStationName(fullTripMatcher.group(3) ?: "")
             arrTime = fullTripMatcher.group(4)?.trim() ?: ""
         } else {
@@ -207,7 +207,7 @@ object Parser12306 {
             val depMatch = depMatchPattern.matcher(text)
             if (depMatch.find()) {
                 depStation = cleanStationName(depMatch.group(1) ?: "")
-                depTime = depMatch.group(2)?.trim() ?: "00:00"
+                depTime = depMatch.group(2)?.trim() ?: ""
             }
 
             // 单独到达时刻匹配 (如 北京南站18:28到)
@@ -218,9 +218,12 @@ object Parser12306 {
                 arrTime = arrMatch.group(2)?.trim() ?: ""
             }
 
-            // 检查双站区间模式 (如 上海虹桥站-北京南站 或 昆明南到普洱 或 上海虹桥至北京南)
+            // 检查双站区间模式 (如 上海虹桥站-北京南站 或 昆明南到普洱 或 桂林至桂林北)
+            // 增加正向先行断言，避免到达站如 桂林北 中的“北”被非贪婪过度缩水
             if (depStation.isBlank() || arrStation.isBlank()) {
-                val stationsPattern = Pattern.compile("([\\u4e00-\\u9fa5]{2,10}?)(?:站)?(?:-|至|到|➔)([\\u4e00-\\u9fa5]{2,10}?)(?:站)?")
+                val stationsPattern = Pattern.compile(
+                    "([\\u4e00-\\u9fa5]{2,10}?)(?:站)?(?:-|至|到|➔)([\\u4e00-\\u9fa5]{2,10}?)(?:站)?(?=[，,。、\\s（(【\\[]|二等|一等|商务|无座|硬卧|软卧|软座|硬座|特等|动卧|[0-9]{1,2}车|$)"
+                )
                 val stationMatcher = stationsPattern.matcher(text)
                 if (stationMatcher.find()) {
                     if (depStation.isBlank()) depStation = cleanStationName(stationMatcher.group(1) ?: "")
@@ -258,8 +261,17 @@ object Parser12306 {
         val seatTypeMatcher = seatTypePattern.matcher(text)
         val seatType = if (seatTypeMatcher.find()) seatTypeMatcher.group(1) ?: "二等座" else "二等座"
 
-        // 票价识别
-        val pricePattern = Pattern.compile("(?:票价|票款)?([0-9]+(?:\\.[0-9]{1,2})?)元")
+        val ticketType = when {
+            text.contains("补票") || text.contains("补差价") -> "列车补票"
+            text.contains("改签") -> "改签票"
+            text.contains("学生") -> "学生票"
+            text.contains("儿童") -> "儿童票"
+            text.contains("残军") || text.contains("军人") -> "残军票"
+            else -> "成人票"
+        }
+
+        // 票价识别 (兼容 票价/票款/补差价)
+        val pricePattern = Pattern.compile("(?:票价|票款|补差价)?\\s*([0-9]+(?:\\.[0-9]{1,2})?)元")
         val priceMatcher = pricePattern.matcher(text)
         val price = if (priceMatcher.find()) "${priceMatcher.group(1)}元" else ""
 
@@ -272,10 +284,15 @@ object Parser12306 {
         val finalOrderNo = if (orderNo.isNotBlank()) {
             orderNo
         } else {
-            val cleanDate = dateStandard.replace("-", "")
-            val rawKey = "${trainCode}_${defaultPassenger}_${depStation}_${arrStation}_${carriage}_${seat}"
-            val hash = kotlin.math.abs(rawKey.hashCode()) % 1000000
-            "S${trainCode}_${cleanDate}_${String.format(Locale.CHINA, "%06d", hash)}"
+            val internalOrderMatcher = Pattern.compile("(?:(?:订单号?[：:]?|订单号码?|订单)\\s*|【(?:12306|铁路12306)】\\s*)([A-Za-z0-9]{10})").matcher(text)
+            if (internalOrderMatcher.find()) {
+                internalOrderMatcher.group(1) ?: ""
+            } else {
+                val cleanDate = dateStandard.replace("-", "")
+                val rawKey = "${trainCode}_${defaultPassenger}_${depStation}_${arrStation}_${carriage}_${seat}"
+                val hash = kotlin.math.abs(rawKey.hashCode()) % 1000000
+                "S${trainCode}_${cleanDate}_${String.format(Locale.CHINA, "%06d", hash)}"
+            }
         }
 
         return Trip(
@@ -290,6 +307,7 @@ object Parser12306 {
             carriage = carriage,
             seat = seat,
             seatType = seatType,
+            ticketType = ticketType,
             price = price,
             ticketGate = extractGateCode(rawGate),
             detailUrl = detailUrl,
