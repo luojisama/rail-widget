@@ -1,5 +1,6 @@
 package team.shiro.railwidget.data.api
 
+import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -17,8 +18,8 @@ object RailwayApiService {
     private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 
     /**
-     * Enrich a parsed Trip with exact arrival time, stopover duration, and intermediate stops
-     * by querying 12306 public timetable APIs.
+     * Enrich a parsed Trip with exact arrival time, stopover duration, intermediate stops,
+     * and official 12306 check-in ticket gate by querying 12306 public APIs.
      */
     fun enrichTrip(trip: Trip): Trip {
         try {
@@ -29,13 +30,16 @@ object RailwayApiService {
                 return trip
             }
 
+            val targetDepStation = trip.departureStation.replace("站", "").trim()
+            val fetchedGate = queryTicketGate(trip.trainCode, trainNo, targetDepStation, trip.departureDate)
+            val effectiveGate = if (!fetchedGate.isNullOrBlank()) fetchedGate else trip.ticketGate
+
             val stops = queryTimetable(trainNo, trip.departureDate)
             if (stops.isEmpty()) {
-                return trip.copy(trainNo = trainNo)
+                return trip.copy(trainNo = trainNo, ticketGate = effectiveGate)
             }
 
             // Find arrival station in stops list
-            val targetDepStation = trip.departureStation.replace("站", "").trim()
             val matchedDepStop = stops.find {
                 it.stationName.replace("站", "").trim().equals(targetDepStation, ignoreCase = true)
             }
@@ -78,6 +82,7 @@ object RailwayApiService {
                 arrivalStation = effectiveArrStation,
                 departureTime = actualDepTime,
                 arrivalTime = actualArrTime,
+                ticketGate = effectiveGate,
                 stopoverTime = stopover,
                 stops = stops
             )
@@ -156,5 +161,105 @@ object RailwayApiService {
             // Ignore network errors
         }
         return stops
+    }
+
+    /**
+     * Query 12306 official station check-in gate for a specific train at the departure station.
+     * Flow:
+     * 1. GET queryStopStations to find departure station telecode (e.g. 北京南 -> VNP)
+     * 2. POST queryTicketCheck with trainDate, trainCode, and telecode
+     */
+    fun queryTicketGate(
+        trainCode: String,
+        trainNo: String,
+        depStation: String,
+        dateStandard: String
+    ): String? {
+        try {
+            // Step 1: Query stop stations telecodes for this train
+            val stopStationsUrl = "https://www.12306.cn/index/otn/index12306/queryStopStations?train_no=$trainNo&depart_date=$dateStandard"
+            val stopReq = Request.Builder()
+                .url(stopStationsUrl)
+                .header("User-Agent", USER_AGENT)
+                .header("Referer", "https://www.12306.cn/index/view/infos/ticket_check.html")
+                .build()
+
+            var telecode: String? = null
+            client.newCall(stopReq).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val body = response.body?.string() ?: return null
+                val json = JSONObject(body)
+                val dataObj = json.optJSONObject("data") ?: return null
+                val targetClean = depStation.replace("站", "").trim()
+
+                val keys = dataObj.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val arr = dataObj.optJSONArray(key)
+                    if (arr != null && arr.length() >= 2) {
+                        val stationName = arr.optString(0).replace("站", "").trim()
+                        if (stationName.equals(targetClean, ignoreCase = true)) {
+                            telecode = arr.optString(1)
+                            break
+                        }
+                    }
+                }
+            }
+
+            if (telecode.isNullOrBlank()) return null
+
+            // Step 2: Query ticket check-in gate using telecode
+            val checkUrl = "https://www.12306.cn/index/otn/index12306/queryTicketCheck"
+            val formBody = FormBody.Builder()
+                .add("trainDate", dateStandard)
+                .add("station_train_code", trainCode)
+                .add("from_station_telecode", telecode!!)
+                .build()
+
+            val checkReq = Request.Builder()
+                .url(checkUrl)
+                .header("User-Agent", USER_AGENT)
+                .header("Referer", "https://www.12306.cn/index/view/infos/ticket_check.html")
+                .post(formBody)
+                .build()
+
+            client.newCall(checkReq).execute().use { response ->
+                if (!response.isSuccessful) return null
+                val body = response.body?.string() ?: return null
+                val json = JSONObject(body)
+                val dataObj = json.optJSONObject("data") ?: return null
+                val rawPlatform = dataObj.optString("trainPlatform", "").trim()
+                if (rawPlatform.isNotBlank()) {
+                    return cleanPlatformString(rawPlatform)
+                }
+            }
+        } catch (_: Exception) {
+            // Ignore network errors
+        }
+        return null
+    }
+
+    /**
+     * Clean 12306 raw platform string, e.g. "检票口17A、17B" -> "17A/B" or "13A13B" -> "13A/B"
+     */
+    fun cleanPlatformString(raw: String): String {
+        val cleaned = raw.removePrefix("检票口").trim()
+        if (cleaned.isBlank()) return ""
+
+        // e.g. "17A、17B" or "13A13B" or "17A 17B"
+        val multiPattern = Regex("""^(\d+)([A-Za-z])[、,/ ]*(\d+)([A-Za-z])$""")
+        val multiMatch = multiPattern.find(cleaned)
+        if (multiMatch != null) {
+            val num1 = multiMatch.groupValues[1]
+            val l1 = multiMatch.groupValues[2]
+            val num2 = multiMatch.groupValues[3]
+            val l2 = multiMatch.groupValues[4]
+            return if (num1 == num2) "$num1$l1/$l2" else "$num1$l1/$num2$l2"
+        }
+
+        return cleaned
+            .replace("、", "/")
+            .replace(",", "/")
+            .replace(" ", "/")
     }
 }

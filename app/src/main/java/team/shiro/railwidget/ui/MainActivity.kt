@@ -205,9 +205,19 @@ class MainActivity : ComponentActivity() {
             TripWidgetRenderer.updateAllWidgets(context)
         }
 
+        fun updateTripGate(orderNo: String, newGate: String) {
+            val existing = trips.find { it.orderNo == orderNo } ?: return
+            val updated = existing.copy(ticketGate = newGate)
+            db.insertOrUpdateTrip(updated)
+            reloadTrips()
+            scope.launch {
+                snackbarHostState.showSnackbar("已更新检票口为: $newGate 并同步至桌面小组件")
+            }
+        }
+
         fun refreshTripTimetable(trip: Trip) {
             scope.launch {
-                snackbarHostState.showSnackbar("正在查询 ${trip.trainCode} 沿途经停时刻表...")
+                snackbarHostState.showSnackbar("正在查询 ${trip.trainCode} 沿途时刻表与检票口...")
                 val enriched = withContext(Dispatchers.IO) {
                     try {
                         RailwayApiService.enrichTrip(trip)
@@ -217,10 +227,13 @@ class MainActivity : ComponentActivity() {
                 }
                 db.insertOrUpdateTrip(enriched)
                 reloadTrips()
+                val gateMsg = if (enriched.ticketGate.isNotBlank()) "，检票口: ${enriched.ticketGate}" else ""
                 if (enriched.stops.isNotEmpty()) {
-                    snackbarHostState.showSnackbar("已更新 ${trip.trainCode} 沿途 ${enriched.stops.size} 站经停时刻与停车时长")
+                    snackbarHostState.showSnackbar("已同步 ${trip.trainCode}$gateMsg，共 ${enriched.stops.size} 站时刻")
+                } else if (enriched.ticketGate.isNotBlank()) {
+                    snackbarHostState.showSnackbar("已同步 ${trip.trainCode} 检票口: ${enriched.ticketGate}")
                 } else {
-                    snackbarHostState.showSnackbar("未能获取到 ${trip.trainCode} 沿途时刻表（可能车次暂未开售或已停运）")
+                    snackbarHostState.showSnackbar("未能获取到 ${trip.trainCode} 实时信息（可能车次暂未开售或已停运）")
                 }
             }
         }
@@ -532,6 +545,9 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onRefreshTimetable = {
                                         refreshTripTimetable(upcomingTrips.first())
+                                    },
+                                    onUpdateGate = { newGate ->
+                                        updateTripGate(upcomingTrips.first().orderNo, newGate)
                                     }
                                 )
                             }
@@ -558,6 +574,9 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onRefreshTimetable = {
                                             refreshTripTimetable(trip)
+                                        },
+                                        onUpdateGate = { newGate ->
+                                            updateTripGate(trip.orderNo, newGate)
                                         }
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
@@ -605,6 +624,9 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onRefreshTimetable = {
                                         refreshTripTimetable(trip)
+                                    },
+                                    onUpdateGate = { newGate ->
+                                        updateTripGate(trip.orderNo, newGate)
                                     }
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))
@@ -645,6 +667,9 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onRefreshTimetable = {
                                         refreshTripTimetable(trip)
+                                    },
+                                    onUpdateGate = { newGate ->
+                                        updateTripGate(trip.orderNo, newGate)
                                     }
                                 )
                                 Spacer(modifier = Modifier.height(12.dp))

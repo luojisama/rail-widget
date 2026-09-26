@@ -89,9 +89,12 @@ data class Trip(
 
     fun getCleanTicketGate(): String {
         if (ticketGate.isBlank()) return "暂无"
-        val regex = Regex("([0-9]+[A-Za-z]?|[A-Za-z]?[0-9]+)")
-        val match = regex.find(ticketGate)
-        return match?.value ?: ticketGate
+        val raw = ticketGate
+            .removePrefix("检票口")
+            .replace("、", "/")
+            .replace(",", "/")
+            .trim()
+        return if (raw.isBlank()) "暂无" else raw
     }
 }
 

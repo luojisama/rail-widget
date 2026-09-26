@@ -21,10 +21,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsTransit
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -32,8 +34,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +65,7 @@ fun HeroTripCard(
     onArchive: () -> Unit,
     onDelete: () -> Unit,
     onRefreshTimetable: (() -> Unit)? = null,
+    onUpdateGate: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val stage = trip.getStage()
@@ -68,6 +73,8 @@ fun HeroTripCard(
     val isInTransit = stage == TripStage.IN_TRANSIT
     // 历史已结束行程默认折叠表格，避免大表格霸屏；未出行或进行中行程可展开浏览
     var isExpandedTable by remember(trip.orderNo) { mutableStateOf(!isCompleted && trip.stops.size > 2) }
+    var showEditGateDialog by remember { mutableStateOf(false) }
+    var editingGateText by remember(trip.ticketGate) { mutableStateOf(trip.ticketGate.removePrefix("检票口")) }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -324,45 +331,48 @@ fun HeroTripCard(
                         )
                     }
 
-                    // 检票口 (醒目高亮)
+                    // 检票口 (醒目高亮，支持点击快速修改或从大屏重查)
                     val gateCode = trip.getCleanTicketGate()
-                    if (gateCode.isNotBlank() && gateCode != "暂无") {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isCompleted) Color(0xFFF1F5F9) else Color(0xFFFEF2F2)
+                    val hasGate = gateCode.isNotBlank() && gateCode != "暂无"
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = when {
+                            isCompleted -> Color(0xFFF1F5F9)
+                            hasGate -> Color(0xFFFEF2F2)
+                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        },
+                        border = if (!hasGate && !isCompleted) BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)) else null,
+                        modifier = Modifier.clickable(enabled = onUpdateGate != null && !isCompleted) {
+                            editingGateText = if (hasGate) gateCode else ""
+                            showEditGateDialog = true
+                        }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = "检票口",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (isCompleted) Color(0xFF64748B) else Color(0xFFDC2626)
+                                    color = if (isCompleted) Color(0xFF64748B) else if (hasGate) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Text(
-                                    text = gateCode,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = if (isCompleted) Color(0xFF64748B) else Color(0xFFDC2626)
-                                )
+                                if (onUpdateGate != null && !isCompleted) {
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = "修改检票口",
+                                        tint = if (hasGate) Color(0xFFDC2626).copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(10.dp)
+                                    )
+                                }
                             }
-                        }
-                    } else {
-                        // 票价或电子客票凭证
-                        Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                text = "票种",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFF94A3B8)
-                            )
-                            val priceOrType = if (trip.price.isNotBlank()) "${trip.ticketType} · ${trip.price}" else trip.ticketType
-                            Text(
-                                text = priceOrType,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Medium,
-                                color = Color(0xFF64748B)
+                                text = if (hasGate) gateCode else "点此录入",
+                                fontSize = if (hasGate) 16.sp else 12.sp,
+                                fontWeight = if (hasGate) FontWeight.Black else FontWeight.Bold,
+                                color = if (isCompleted) Color(0xFF64748B) else if (hasGate) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -510,6 +520,97 @@ fun HeroTripCard(
                 }
             }
         }
+    }
+
+    if (showEditGateDialog && onUpdateGate != null) {
+        AlertDialog(
+            onDismissRequest = { showEditGateDialog = false },
+            title = {
+                Text(
+                    text = "修改检票口",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "${trip.trainCode} · ${trip.departureStation} ➔ ${trip.arrivalStation}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = editingGateText,
+                        onValueChange = { editingGateText = it },
+                        label = { Text("检票口编号") },
+                        placeholder = { Text("如 17A、17A/B、A5") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "快捷输入：",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        listOf("A", "B", "A/B", "1A", "1B").forEach { suffix ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                modifier = Modifier.clickable {
+                                    editingGateText = if (editingGateText.isNotBlank() && editingGateText.all { it.isDigit() }) {
+                                        editingGateText + suffix
+                                    } else {
+                                        suffix
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    text = suffix,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                    if (onRefreshTimetable != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TextButton(
+                            onClick = {
+                                showEditGateDialog = false
+                                onRefreshTimetable()
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("从 12306 官方重新拉取检票口")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showEditGateDialog = false
+                        onUpdateGate(editingGateText.trim())
+                    }
+                ) {
+                    Text("保存", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditGateDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
 
