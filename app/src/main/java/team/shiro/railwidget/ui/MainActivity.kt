@@ -473,9 +473,8 @@ class MainActivity : ComponentActivity() {
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
                         actions = {
-                            val isAnySyncing = isReadingSms || isSyncingMail || isCheckingUpdate
-                            val spinAngle = if (isAnySyncing) {
-                                val infiniteTransition = rememberInfiniteTransition(label = "topBarRotation")
+                            val spinAngle = if (isSyncingMail) {
+                                val infiniteTransition = rememberInfiniteTransition(label = "mailSyncRotation")
                                 infiniteTransition.animateFloat(
                                     initialValue = 0f,
                                     targetValue = 360f,
@@ -486,7 +485,7 @@ class MainActivity : ComponentActivity() {
                                 ).value
                             } else 0f
 
-                            // 读取短信按钮 (通过 graphicsLayer 仅在绘制阶段旋转，零重组开销)
+                            // 读取短信按钮 (原生规范：静止展示，读取中主题色高亮并防重)
                             IconButton(
                                 onClick = { triggerSmsSync() },
                                 enabled = !isReadingSms
@@ -494,12 +493,11 @@ class MainActivity : ComponentActivity() {
                                 Icon(
                                     imageVector = Icons.Default.Sms,
                                     contentDescription = "读取 12306 短信",
-                                    tint = if (isReadingSms) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = if (isReadingSms) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
+                                    tint = if (isReadingSms) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
 
-                            // 邮箱同步按钮 (平滑硬件旋转)
+                            // 邮箱同步按钮 (仅标准圆形刷新箭头保留顺时针平滑旋转)
                             IconButton(
                                 onClick = { triggerMailSync() },
                                 enabled = !isSyncingMail
@@ -512,7 +510,7 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
 
-                            // 检查更新按钮
+                            // 检查更新按钮 (原生规范：静止展示，检查中主题色高亮并防重)
                             IconButton(
                                 onClick = { triggerCheckUpdate() },
                                 enabled = !isCheckingUpdate
@@ -520,8 +518,7 @@ class MainActivity : ComponentActivity() {
                                 Icon(
                                     imageVector = Icons.Default.SystemUpdate,
                                     contentDescription = "检查更新",
-                                    tint = if (isCheckingUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = if (isCheckingUpdate) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
+                                    tint = if (isCheckingUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                             }
 
