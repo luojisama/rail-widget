@@ -476,7 +476,7 @@ class LiveIslandView(private val context: Context) {
         tvExpandedStatus.setTextColor(stColor)
         (tvExpandedStatus.background as? GradientDrawable)?.setColor(stBg)
 
-        tvExpandedRoute.text = "${trip.departureStation}  ➔  ${trip.arrivalStation}"
+        tvExpandedRoute.text = "${trip.departureStation}  →  ${trip.arrivalStation}"
         val arrTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--"
         val closeNotice = if (stage == TripStage.COMPLETED) " · 15m后自动关闭" else ""
         tvExpandedTimes.text = "发车 $depTime  ·  到达 $arrTime$closeNotice"

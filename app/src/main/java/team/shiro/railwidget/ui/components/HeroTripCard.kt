@@ -148,39 +148,47 @@ fun HeroTripCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
-
-                // 乘车日期 (含星期) 与 乘车人
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = formatDisplayDate(trip.departureDate),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "乘车人 · ${trip.passengerName}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF94A3B8),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        if (trip.ticketType.isNotBlank() && trip.ticketType != "成人票") {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(4.dp),
-                                color = if (trip.ticketType.contains("补票")) Color(0xFFFEF3C7) else Color(0xFFEFF6FF)
-                            ) {
+                // 灵动胶囊状态指示芯片 (自绘闪电/运行红点，纯矢量，绝无 emoji 变形)
+                if (isIslandRunning || isAutoLaunchActive) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isIslandRunning) Color(0xFFFEF2F2) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, if (isIslandRunning) Color(0xFFFCA5A5) else MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                        modifier = if (onToggleIsland != null) Modifier.clickable { onToggleIsland() } else Modifier
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            if (isIslandRunning) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFDC2626))
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = trip.ticketType,
-                                    fontSize = 10.sp,
+                                    text = "胶囊运行中",
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (trip.ticketType.contains("补票")) Color(0xFFD97706) else Color(0xFF2563EB),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    color = Color(0xFFDC2626),
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            } else {
+                                LightningBoltIcon(
+                                    modifier = Modifier.size(11.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                val leadLabel = if (autoLeadText.isNotBlank()) "自动拉起 · $autoLeadText" else "自动拉起就绪"
+                                Text(
+                                    text = leadLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -189,78 +197,9 @@ fun HeroTripCard(
                     }
                 }
 
-                // 灵动岛快捷胶囊开关 (仅在非已结束行程且有开关回调时展示，避免挤压顶栏)
-                if (!isCompleted && onToggleIsland != null) {
-                    val islandBtnBg by animateColorAsState(
-                        targetValue = when {
-                            isIslandRunning -> Color(0xFFFEF2F2)
-                            isAutoLaunchActive -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-                        },
-                        animationSpec = tween(durationMillis = 200),
-                        label = "islandBtnBg"
-                    )
-                    val islandBtnBorder by animateColorAsState(
-                        targetValue = when {
-                            isIslandRunning -> Color(0xFFFCA5A5)
-                            isAutoLaunchActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
-                            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
-                        },
-                        animationSpec = tween(durationMillis = 200),
-                        label = "islandBtnBorder"
-                    )
-                    val islandBtnText by animateColorAsState(
-                        targetValue = when {
-                            isIslandRunning -> Color(0xFFDC2626)
-                            isAutoLaunchActive -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        animationSpec = tween(durationMillis = 200),
-                        label = "islandBtnText"
-                    )
+                Spacer(modifier = Modifier.weight(1f))
 
-                    val btnLabel = when {
-                        isIslandRunning -> "关闭胶囊"
-                        isAutoLaunchActive && autoLeadText.isNotBlank() -> "⚡ 自动拉起 ($autoLeadText)"
-                        isAutoLaunchActive -> "⚡ 自动拉起"
-                        else -> "灵动岛"
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(12.dp),
-                        color = islandBtnBg,
-                        border = BorderStroke(1.dp, islandBtnBorder),
-                        modifier = Modifier
-                            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
-                            .clickable { onToggleIsland() }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = btnLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = islandBtnText,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                            if (isIslandRunning) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFFDC2626))
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                }
-
-                // 状态指示药丸
+                // 状态指示药丸 (候车中 / 停止检票 / 运行中 / 已结束)
                 val statusText = when {
                     isCompleted -> "已结束"
                     isInTransit -> "运行中"
@@ -283,8 +222,54 @@ fun HeroTripCard(
                         color = statusFg,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        maxLines = 1,
+                        softWrap = false
                     )
+                }
+            }
+
+            // 2. 卡片顶栏第二行：完整出行日期与星期 + 乘车人 + 票种标签 (独占整行，彻底告别 9月2... 与 乘车... 截断)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = formatDisplayDate(trip.departureDate),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "乘车人 · ${trip.passengerName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color(0xFF94A3B8),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (trip.ticketType.isNotBlank() && trip.ticketType != "成人票") {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (trip.ticketType.contains("补票")) Color(0xFFFEF3C7) else Color(0xFFEFF6FF)
+                    ) {
+                        Text(
+                            text = trip.ticketType,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (trip.ticketType.contains("补票")) Color(0xFFD97706) else Color(0xFF2563EB),
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
 
@@ -353,11 +338,9 @@ fun HeroTripCard(
                                 .height(2.dp)
                                 .background(Color(0xFFCBD5E1))
                         )
-                        Icon(
-                            imageVector = Icons.Default.DirectionsTransit,
-                            contentDescription = null,
-                            tint = if (isCompleted) Color(0xFF94A3B8) else if (isInTransit) Color(0xFF0F766E) else Color(0xFF0284C7),
-                            modifier = Modifier.size(16.dp)
+                        BulletTrainIcon(
+                            modifier = Modifier.size(18.dp),
+                            tint = if (isCompleted) Color(0xFF94A3B8) else if (isInTransit) Color(0xFF0F766E) else Color(0xFF0284C7)
                         )
                     }
 
@@ -497,10 +480,18 @@ fun HeroTripCard(
                                     )
                                 }
                             }
+                            val gateFontSize = when {
+                                !hasGate -> 12.sp
+                                gateCode.length > 8 -> 12.sp
+                                gateCode.length > 5 -> 14.sp
+                                else -> 16.sp
+                            }
                             Text(
                                 text = if (hasGate) gateCode else "点此录入",
-                                fontSize = if (hasGate) 16.sp else 12.sp,
+                                fontSize = gateFontSize,
                                 fontWeight = if (hasGate) FontWeight.Black else FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false,
                                 color = if (isCompleted) Color(0xFF64748B) else if (hasGate) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary
                             )
                         }
@@ -524,25 +515,26 @@ fun HeroTripCard(
                         .padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = null,
+                    ClockDialIcon(
                         modifier = Modifier.size(15.dp),
                         tint = if (isCompleted) Color(0xFF94A3B8) else Color(0xFF0284C7)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     val tableTitle = if (trip.stops.isNotEmpty()) {
-                        "沿途经停站与停车时间表 (全线共 ${trip.stops.size} 站)"
+                        "经停时刻表 (全线 ${trip.stops.size} 站)"
                     } else {
-                        "沿途经停站时刻表 (区间两站)"
+                        "经停时刻表 (区间两站)"
                     }
                     Text(
                         text = tableTitle,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface
+                        color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
-                    Spacer(modifier = Modifier.weight(1f))
                     Text(
                         text = if (isExpandedTable) "收起" else "展开",
                         style = MaterialTheme.typography.labelSmall,
@@ -634,7 +626,7 @@ fun HeroTripCard(
                     }
                 }
 
-                if ((!isCompleted || isIslandRunning) && onToggleIsland != null) {
+                if (onToggleIsland != null) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(8.dp),
@@ -646,11 +638,18 @@ fun HeroTripCard(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
+                            val islandBtnLabel = when {
+                                isIslandRunning -> "关闭灵动岛"
+                                isCompleted -> "预览灵动岛"
+                                else -> "开启灵动岛"
+                            }
                             Text(
-                                text = if (isIslandRunning) "关闭灵动岛" else "开启灵动岛",
+                                text = islandBtnLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isIslandRunning) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isIslandRunning) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
                             )
                             if (isIslandRunning) {
                                 Spacer(modifier = Modifier.width(5.dp))
@@ -711,7 +710,7 @@ fun HeroTripCard(
             text = {
                 Column {
                     Text(
-                        text = "${trip.trainCode} · ${trip.departureStation} ➔ ${trip.arrivalStation}",
+                        text = "${trip.trainCode} · ${trip.departureStation} → ${trip.arrivalStation}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

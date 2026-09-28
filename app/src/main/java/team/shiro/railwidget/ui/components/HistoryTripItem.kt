@@ -2,6 +2,7 @@ package team.shiro.railwidget.ui.components
 
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Train
@@ -25,15 +26,14 @@ fun HistoryTripItem(
     ListItem(
         modifier = modifier,
         leadingContent = {
-            Icon(
-                imageVector = Icons.Default.Train,
-                contentDescription = null,
+            BulletTrainIcon(
+                modifier = Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
         },
         headlineContent = {
             Text(
-                text = "${trip.trainCode} · ${trip.departureStation} ➔ ${trip.arrivalStation}",
+                text = "${trip.trainCode} · ${trip.departureStation} → ${trip.arrivalStation}",
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis

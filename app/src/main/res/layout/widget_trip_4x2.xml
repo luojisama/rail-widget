@@ -113,7 +113,7 @@
                 android:id="@+id/tv_route_arrow"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="──────➔"
+                android:text="──────→"
                 android:textColor="@color/widget_text_route_arrow"
                 android:textSize="13sp" />
         </LinearLayout>

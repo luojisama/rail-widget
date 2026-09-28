@@ -38,14 +38,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material.icons.filled.SystemUpdate
+import team.shiro.railwidget.ui.components.BulletTrainIcon
+import team.shiro.railwidget.ui.components.RailTrackIcon
+import team.shiro.railwidget.ui.components.TicketDocIcon
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -623,7 +628,8 @@ class MainActivity : ComponentActivity() {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp)
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 100.dp)
                 ) {
                     when (targetTab) {
                         0 -> {
@@ -651,7 +657,12 @@ class MainActivity : ComponentActivity() {
                                                 modifier = Modifier.padding(14.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text("💡", fontSize = 20.sp)
+                                                Icon(
+                                                    imageVector = Icons.Default.Lightbulb,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
                                                 Spacer(modifier = Modifier.width(10.dp))
                                                 Column {
                                                     Text(
@@ -1043,7 +1054,7 @@ class MainActivity : ComponentActivity() {
                                 "解决方案：\n" +
                                 "1. 点击下方按钮进入权限管理，找到「桌面快捷方式」并选择【始终允许】；\n" +
                                 "2. 返回应用重新点击添加；\n" +
-                                "3. 或双指捏合手机桌面 ➔ 滑到底部「安卓小部件」手动拖拽。",
+                                "3. 或双指捏合手机桌面 → 滑到底部「安卓小部件」手动拖拽。",
                         lineHeight = 20.sp
                     )
                 },
@@ -1123,8 +1134,8 @@ private fun EmptyUpcomingCard(
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("🚄", fontSize = 44.sp)
-            Spacer(modifier = Modifier.height(10.dp))
+            BulletTrainIcon(modifier = Modifier.size(54.dp), tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = "暂无待出行车次",
                 style = MaterialTheme.typography.titleMedium,
@@ -1171,8 +1182,8 @@ private fun InTransitEmptyCard() {
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("🛤️", fontSize = 40.sp)
-            Spacer(modifier = Modifier.height(10.dp))
+            RailTrackIcon(modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.tertiary)
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = "当前无在途列车",
                 style = MaterialTheme.typography.titleMedium,
@@ -1205,8 +1216,8 @@ private fun CompletedEmptyCard() {
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text("📋", fontSize = 40.sp)
-            Spacer(modifier = Modifier.height(10.dp))
+            TicketDocIcon(modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.outline)
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = "暂无已完成行程",
                 style = MaterialTheme.typography.titleMedium,
@@ -1291,19 +1302,28 @@ private fun WidgetPinGuideCard(
 
             val context = androidx.compose.ui.platform.LocalContext.current
             Column {
-                Text(
-                    text = "💡 小米 MIUI 14 / 澎湃 OS 提示：",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Lightbulb,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "小米 MIUI 14 / 澎湃 OS 提示：",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "长按桌面图标提示「该应用此版本没有小部件」，是因为该入口专供小米商店云端过审卡片。\n\n" +
                             "添加本应用小部件的 2 种快捷途径：\n" +
                             "• 途径 ①：在桌面长按本 App 图标，点击弹出的快捷菜单「添加横卡」或「添加磁贴」；\n" +
                             "• 途径 ②：点击下方按钮开启权限后，点击上方「添加 4×2 横卡」，由系统弹窗直接一键添加；\n" +
-                            "• 途径 ③：桌面双指捏合 ➔ 添加小部件 ➔ 滑动到底部点击「安卓小部件」即可拖拽。",
+                            "• 途径 ③：桌面双指捏合 → 添加小部件 → 滑动到底部点击「安卓小部件」即可拖拽。",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                     lineHeight = 18.sp
@@ -1316,7 +1336,7 @@ private fun WidgetPinGuideCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("前往开启「桌面快捷方式」权限 ↗", fontSize = 12.sp)
+                    Text("前往开启「桌面快捷方式」权限", fontSize = 12.sp)
                 }
             }
         }

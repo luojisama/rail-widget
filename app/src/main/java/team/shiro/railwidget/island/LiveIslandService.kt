@@ -300,8 +300,8 @@ class LiveIslandService : Service() {
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("🚄 ${trip.trainCode} · $gateText")
-            .setContentText("${trip.departureStation} ➔ ${trip.arrivalStation} | $seatText")
+            .setContentTitle("${trip.trainCode} · $gateText")
+            .setContentText("${trip.departureStation} → ${trip.arrivalStation} | $seatText")
             .setContentIntent(pendingOpen)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

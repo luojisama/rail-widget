@@ -10,15 +10,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
@@ -108,12 +112,32 @@ fun SettingsDialog(
                     Tab(
                         selected = selectedCategoryTab == 0,
                         onClick = { selectedCategoryTab = 0 },
-                        text = { Text("⚡ 灵动岛自动化") }
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                LightningBoltIcon(
+                                    modifier = Modifier.size(13.dp),
+                                    tint = if (selectedCategoryTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("灵动岛自动化")
+                            }
+                        }
                     )
                     Tab(
                         selected = selectedCategoryTab == 1,
                         onClick = { selectedCategoryTab = 1 },
-                        text = { Text("✉ 邮箱同步") }
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Email,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                    tint = if (selectedCategoryTab == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("邮箱同步")
+                            }
+                        }
                     )
                 }
 

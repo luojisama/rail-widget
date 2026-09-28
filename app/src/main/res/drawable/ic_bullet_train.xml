@@ -1,0 +1,26 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="36dp"
+    android:viewportWidth="36"
+    android:viewportHeight="36">
+    <!-- 流线型高铁车头轮廓 -->
+    <path
+        android:fillColor="#0284C7"
+        android:pathData="M3,26 L23,26 C28,26 33.5,22.5 35,18 C33,13 27,10 21,10 L3,10 Z" />
+    <!-- 驾驶室风挡车窗 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M22,12.5 L28,13.5 C30,15 30.5,16.5 29.5,17.5 L22,17.5 Z" />
+    <!-- 侧面客室车窗 1 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M6,13.5 L12,13.5 C12.5,13.5 13,14 13,14.5 L13,17.5 C13,18 12.5,18.5 12,18.5 L6,18.5 C5.5,18.5 5,18 5,17.5 L5,14.5 C5,14 5.5,13.5 6,13.5 Z" />
+    <!-- 侧面客室车窗 2 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M14,13.5 L20,13.5 C20.5,13.5 21,14 21,14.5 L21,17.5 C21,18 20.5,18.5 20,18.5 L14,18.5 C13.5,18.5 13,18 13,17.5 L13,14.5 C13,14 13.5,13.5 14,13.5 Z" />
+    <!-- 底部动感飞驰轨道线条 -->
+    <path
+        android:fillColor="#38BDF8"
+        android:pathData="M2,30 L27,30 C27.8,30 28.5,29.3 28.5,28.5 C28.5,27.7 27.8,27 27,27 L2,27 C1.2,27 0.5,27.7 0.5,28.5 C0.5,29.3 1.2,30 2,30 Z" />
+</vector>

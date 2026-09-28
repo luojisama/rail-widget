@@ -65,7 +65,7 @@ object TripWidgetRenderer {
             views.setTextColor(R.id.tv_dep_time, android.graphics.Color.parseColor("#1A1C1E"))
         }
 
-        views.setTextViewText(R.id.tv_route, "${trip.departureStation} ➔ ${trip.arrivalStation}")
+        views.setTextViewText(R.id.tv_route, "${trip.departureStation} → ${trip.arrivalStation}")
         val seatStr = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
             val ticketTag = if (trip.ticketType == "列车补票") " (补)" else ""
             "${trip.carriage} ${trip.seat}$ticketTag".trim()
@@ -122,7 +122,7 @@ object TripWidgetRenderer {
         }
 
         // 动态路线指示
-        val arrowText = if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) "●──➔ 运行中" else "──────➔"
+        val arrowText = if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) "●──→ 运行中" else "──────→"
         views.setTextViewText(R.id.tv_route_arrow, arrowText)
 
         val depTime4x2 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else trip.departureTime
@@ -190,7 +190,7 @@ object TripWidgetRenderer {
         }
 
         // 动态路线指示
-        val arrowText = if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) "●──➔ 运行中" else "────────➔"
+        val arrowText = if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) "●──→ 运行中" else "────────→"
         views.setTextViewText(R.id.tv_route_arrow, arrowText)
 
         val depTime4x4 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else trip.departureTime
