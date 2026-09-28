@@ -56,8 +56,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -95,14 +95,7 @@ fun HeroTripCard(
     var editingGateText by remember(trip.ticketGate) { mutableStateOf(trip.ticketGate.removePrefix("检票口")) }
 
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = spring(
-                    stiffness = Spring.StiffnessMediumLow,
-                    dampingRatio = Spring.DampingRatioLowBouncy
-                )
-            ),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -529,7 +522,7 @@ fun HeroTripCard(
                         contentDescription = null,
                         modifier = Modifier
                             .size(16.dp)
-                            .rotate(arrowRotation),
+                            .graphicsLayer { rotationZ = arrowRotation },
                         tint = Color(0xFF94A3B8)
                     )
                 }

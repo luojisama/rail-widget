@@ -50,7 +50,7 @@ object UpdateChecker {
         .build()
 
     private const val GITHUB_REPO = "luojisama/rail-widget"
-    private const val CURRENT_VERSION = "1.0.7"
+    val CURRENT_VERSION: String get() = team.shiro.railwidget.BuildConfig.VERSION_NAME
 
     // 常用多线加速镜像节点
     val MIRROR_NODES = listOf(

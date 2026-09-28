@@ -15,17 +15,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -37,7 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -435,7 +430,7 @@ class MainActivity : ComponentActivity() {
                     if (info != null && info.hasUpdate) {
                         updateInfo = info
                     } else {
-                        snackbarHostState.showSnackbar("当前已是最新版本 (v1.0.7)")
+                        snackbarHostState.showSnackbar("当前已是最新版本 (v${team.shiro.railwidget.BuildConfig.VERSION_NAME})")
                     }
                 } else {
                     snackbarHostState.showSnackbar("检查更新失败: ${result.exceptionOrNull()?.message}")
@@ -443,14 +438,17 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 行程三分类
-        val now = System.currentTimeMillis()
-        val upcomingTrips = trips.filter { it.getStage(now) == TripStage.UPCOMING && !it.isArchived }
-            .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
-        val inTransitTrips = trips.filter { it.getStage(now) == TripStage.IN_TRANSIT && !it.isArchived }
-            .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
-        val completedTrips = trips.filter { it.getStage(now) == TripStage.COMPLETED || it.isArchived }
-            .sortedWith(compareByDescending<Trip> { it.departureDate }.thenByDescending { it.departureTime })
+        // 行程三分类 (remember 记忆化，彻底杜绝无谓的重复耗时计算)
+        val (upcomingTrips, inTransitTrips, completedTrips) = remember(trips) {
+            val now = System.currentTimeMillis()
+            val upcoming = trips.filter { it.getStage(now) == TripStage.UPCOMING && !it.isArchived }
+                .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
+            val inTransit = trips.filter { it.getStage(now) == TripStage.IN_TRANSIT && !it.isArchived }
+                .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
+            val completed = trips.filter { it.getStage(now) == TripStage.COMPLETED || it.isArchived }
+                .sortedWith(compareByDescending<Trip> { it.departureDate }.thenByDescending { it.departureTime })
+            Triple(upcoming, inTransit, completed)
+        }
 
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -475,17 +473,20 @@ class MainActivity : ComponentActivity() {
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
                         actions = {
-                            val infiniteTransition = rememberInfiniteTransition(label = "topBarRotation")
-                            val spinAngle by infiniteTransition.animateFloat(
-                                initialValue = 0f,
-                                targetValue = 360f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(durationMillis = 900, easing = LinearEasing)
-                                ),
-                                label = "spinAngle"
-                            )
+                            val isAnySyncing = isReadingSms || isSyncingMail || isCheckingUpdate
+                            val spinAngle = if (isAnySyncing) {
+                                val infiniteTransition = rememberInfiniteTransition(label = "topBarRotation")
+                                infiniteTransition.animateFloat(
+                                    initialValue = 0f,
+                                    targetValue = 360f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(durationMillis = 900, easing = LinearEasing)
+                                    ),
+                                    label = "spinAngle"
+                                ).value
+                            } else 0f
 
-                            // 读取短信按钮 (同步时优雅微旋转，无缝零布局抖动)
+                            // 读取短信按钮 (通过 graphicsLayer 仅在绘制阶段旋转，零重组开销)
                             IconButton(
                                 onClick = { triggerSmsSync() },
                                 enabled = !isReadingSms
@@ -494,11 +495,11 @@ class MainActivity : ComponentActivity() {
                                     imageVector = Icons.Default.Sms,
                                     contentDescription = "读取 12306 短信",
                                     tint = if (isReadingSms) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = if (isReadingSms) Modifier.rotate(spinAngle) else Modifier
+                                    modifier = if (isReadingSms) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
                                 )
                             }
 
-                            // 邮箱同步按钮 (同步时平滑旋转)
+                            // 邮箱同步按钮 (平滑硬件旋转)
                             IconButton(
                                 onClick = { triggerMailSync() },
                                 enabled = !isSyncingMail
@@ -507,7 +508,7 @@ class MainActivity : ComponentActivity() {
                                     imageVector = Icons.Default.Refresh,
                                     contentDescription = "同步邮箱",
                                     tint = if (isSyncingMail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = if (isSyncingMail) Modifier.rotate(spinAngle) else Modifier
+                                    modifier = if (isSyncingMail) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
                                 )
                             }
 
@@ -520,7 +521,7 @@ class MainActivity : ComponentActivity() {
                                     imageVector = Icons.Default.SystemUpdate,
                                     contentDescription = "检查更新",
                                     tint = if (isCheckingUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = if (isCheckingUpdate) Modifier.rotate(spinAngle) else Modifier
+                                    modifier = if (isCheckingUpdate) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
                                 )
                             }
 
@@ -593,17 +594,9 @@ class MainActivity : ComponentActivity() {
                 )
             }
         ) { paddingValues ->
-            AnimatedContent(
+            Crossfade(
                 targetState = selectedTabIndex,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        (slideInHorizontally { width -> width / 4 } + fadeIn(animationSpec = tween(220)))
-                            .togetherWith(slideOutHorizontally { width -> -width / 4 } + fadeOut(animationSpec = tween(180)))
-                    } else {
-                        (slideInHorizontally { width -> -width / 4 } + fadeIn(animationSpec = tween(220)))
-                            .togetherWith(slideOutHorizontally { width -> width / 4 } + fadeOut(animationSpec = tween(180)))
-                    }
-                },
+                animationSpec = tween(durationMillis = 180),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues),
