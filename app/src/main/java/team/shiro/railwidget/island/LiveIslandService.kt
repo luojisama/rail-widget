@@ -18,6 +18,11 @@ import team.shiro.railwidget.data.local.TripDatabaseHelper
 import team.shiro.railwidget.data.model.Trip
 import team.shiro.railwidget.data.model.TripStage
 import team.shiro.railwidget.ui.MainActivity
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * 灵动胶囊 / 桌面灵动岛前台生命周期服务
@@ -29,11 +34,8 @@ class LiveIslandService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var currentTrip: Trip? = null
 
-    private val tickerRunnable = object : Runnable {
-        override fun run() {
-            refreshTripState()
-            handler.postDelayed(this, 30_000) // 每 30 秒平滑刷新倒计时与检票状态
-        }
+    private val tickerRunnable = Runnable {
+        refreshTripState()
     }
 
     override fun onCreate() {
@@ -71,8 +73,7 @@ class LiveIslandService : Service() {
                         islandView?.updateTrip(trip)
                     }
 
-                    handler.removeCallbacks(tickerRunnable)
-                    handler.post(tickerRunnable)
+                    refreshTripState()
                 } else {
                     stopSelf()
                 }
@@ -91,27 +92,84 @@ class LiveIslandService : Service() {
         }
         currentTrip = trip
         currentOrderNo = trip?.orderNo
-
-        // 到发车日期自动异步获取最新检票口并缓存
-        trip?.let { checkAndFetchTicketGateAsync(it) }
     }
 
     private fun refreshTripState() {
-        val trip = currentTrip ?: return
+        val trip = currentTrip ?: run {
+            stopSelf()
+            return
+        }
         val db = TripDatabaseHelper.getInstance(this)
         val refreshed = db.getTrip(trip.orderNo) ?: trip
         currentTrip = refreshed
         currentOrderNo = refreshed.orderNo
 
-        val stage = refreshed.getStage()
         islandView?.updateTrip(refreshed)
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, buildForegroundNotification(refreshed))
 
-        // 定时轮询中，若无具体检票口且已到发车日期，自动后台获取并缓存
-        val gate = refreshed.getCleanTicketGate()
-        if (gate.isBlank() || gate == "暂无") {
-            checkAndFetchTicketGateAsync(refreshed)
+        // 统一计算并调度下一次探测或倒计时刷新
+        scheduleNextCheck(refreshed)
+    }
+
+    /**
+     * 智能时间调度核心逻辑：
+     * 严格按 Asia/Shanghai 时区计算：
+     * 1. 若当前日期早于出发日期（未来车次）：
+     *    计算距离出发日当天 00:00:05（上海时间）的精确延迟，一次性深度休眠，期间 0 轮询、0 网络请求、0 耗电！
+     * 2. 若当前已到达出发日当天：
+     *    12306 车站大屏在出发日 00:00 之后即可查到全天所有车次检票口；
+     *    - 若尚未拿到检票口，立即异步拉取并缓存至 SQLite，若暂未出结果则以 15 分钟低频重试；
+     *    - 若已成功拿到检票口，以 60 秒平滑刷新发车倒计时与运行状态。
+     * 3. 若行程已结束（COMPLETED），5 分钟低频状态检查或安全结束。
+     */
+    private fun scheduleNextCheck(trip: Trip) {
+        handler.removeCallbacks(tickerRunnable)
+
+        val shanghaiTz = TimeZone.getTimeZone("Asia/Shanghai")
+        val nowCal = Calendar.getInstance(shanghaiTz)
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).apply {
+            timeZone = shanghaiTz
+        }
+        val todayStr = sdf.format(nowCal.time)
+        val depDate = trip.departureDate.trim()
+
+        // 1. 未来车次：深度休眠至发车日当天 00:00:05 (上海时间)
+        if (depDate.isNotBlank() && depDate > todayStr) {
+            try {
+                val targetCal = Calendar.getInstance(shanghaiTz).apply {
+                    time = sdf.parse(depDate) ?: nowCal.time
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 5)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val delay = targetCal.timeInMillis - nowCal.timeInMillis
+                val safeDelay = if (delay > 0) delay else 3600_000L
+                handler.postDelayed(tickerRunnable, safeDelay)
+            } catch (_: Exception) {
+                handler.postDelayed(tickerRunnable, 3600_000L) // 兜底 1 小时
+            }
+            return
+        }
+
+        // 2. 行程已结束
+        val stage = trip.getStage(nowCal.timeInMillis)
+        if (stage == TripStage.COMPLETED) {
+            handler.postDelayed(tickerRunnable, 5 * 60 * 1000L)
+            return
+        }
+
+        // 3. 发车日当天：检查并拉取 12306 大屏检票口
+        val gate = trip.getCleanTicketGate()
+        val hasGate = gate.isNotBlank() && gate != "暂无"
+        if (!hasGate) {
+            // 当天未出检票口，立即后台探测拉取，并设置 15 分钟重试
+            checkAndFetchTicketGateAsync(trip)
+            handler.postDelayed(tickerRunnable, 15 * 60 * 1000L)
+        } else {
+            // 检票口已公布并缓存，只需 60 秒刷新一次倒计时与运行状态
+            handler.postDelayed(tickerRunnable, 60_000L)
         }
     }
 
@@ -119,19 +177,24 @@ class LiveIslandService : Service() {
     private var isFetchingGate = false
 
     /**
-     * 到发车日期自动异步拉取 12306 官方最新检票口并持久化缓存至数据库
+     * 到发车日期自动异步拉取 12306 官方最新车站大屏检票口并持久化缓存至 SQLite 数据库
      */
     private fun checkAndFetchTicketGateAsync(trip: Trip) {
         if (isFetchingGate) return
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).format(java.util.Date())
-        // 当天或已到达发车日期
-        if (trip.departureDate.isNotBlank() && trip.departureDate <= today) {
+        val shanghaiTz = TimeZone.getTimeZone("Asia/Shanghai")
+        val todayShanghai = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).apply {
+            timeZone = shanghaiTz
+        }.format(Date())
+
+        // 严格检验：必须到达出发日当天
+        if (trip.departureDate.isNotBlank() && trip.departureDate <= todayShanghai) {
             isFetchingGate = true
             Thread {
                 try {
                     val enriched = team.shiro.railwidget.data.api.RailwayApiService.enrichTrip(trip)
                     val newGate = enriched.getCleanTicketGate()
-                    if (newGate.isNotBlank() && newGate != "暂无" && newGate != trip.getCleanTicketGate()) {
+                    val oldGate = trip.getCleanTicketGate()
+                    if (newGate.isNotBlank() && newGate != "暂无" && newGate != oldGate) {
                         val db = TripDatabaseHelper.getInstance(this)
                         db.insertOrUpdateTrip(enriched)
                         handler.post {
@@ -146,6 +209,9 @@ class LiveIslandService : Service() {
                                     setPackage(packageName)
                                 }
                                 sendBroadcast(widgetIntent)
+
+                                // 检票口更新成功，立即触发调度，由 15 分钟探测模式切入 60 秒倒计时刷新模式
+                                scheduleNextCheck(enriched)
                             }
                         }
                     }

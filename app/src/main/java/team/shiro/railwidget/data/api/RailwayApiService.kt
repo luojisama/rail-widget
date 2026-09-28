@@ -9,6 +9,7 @@ import team.shiro.railwidget.data.model.Trip
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 object RailwayApiService {
@@ -26,7 +27,7 @@ object RailwayApiService {
      */
     fun enrichTrip(trip: Trip): Trip {
         try {
-            val todayStandard = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date())
+            val todayStandard = getTodayShanghai()
             val todayCompact = todayStandard.replace("-", "")
 
             val dateFormatted = trip.departureDate.replace("-", "") // YYYYMMDD
@@ -237,7 +238,7 @@ object RailwayApiService {
             }
 
             telecode = tryResolveTelecode(dateStandard)
-            val todayStandard = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).format(Date())
+            val todayStandard = getTodayShanghai()
             if (telecode.isNullOrBlank() && dateStandard != todayStandard) {
                 telecode = tryResolveTelecode(todayStandard)
             }
@@ -297,5 +298,11 @@ object RailwayApiService {
             .replace("、", "/")
             .replace(",", "/")
             .replace(" ", "/")
+    }
+
+    private fun getTodayShanghai(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+        }.format(Date())
     }
 }
