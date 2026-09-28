@@ -53,7 +53,7 @@ class LiveIslandService : Service() {
                 return START_NOT_STICKY
             }
             ACTION_START, ACTION_UPDATE -> {
-                val orderNo = intent?.getStringExtra(EXTRA_ORDER_NO)
+                val orderNo = intent?.getStringExtra(EXTRA_ORDER_NO) ?: intent?.getStringExtra("order_no")
                 loadTrip(orderNo)
 
                 val trip = currentTrip
@@ -190,14 +190,19 @@ class LiveIslandService : Service() {
                 val arrMillis = trip.getArrivalTimeMillis()
                 val elapsedSinceArrival = nowCal.timeInMillis - arrMillis
                 val bufferMillis = 15 * 60 * 1000L // 15 分钟出站缓冲时间
-                if (elapsedSinceArrival >= bufferMillis) {
-                    // 已超过 15 分钟缓冲，安全退出悬浮窗与前台服务
-                    stopSelf()
-                    return
-                } else {
-                    // 尚未满 15 分钟，在剩余时间到期后触发退出
+                if (elapsedSinceArrival in 0 until bufferMillis) {
+                    // 仅当处于自然到站的 15 分钟出站缓冲期内时，在剩余缓冲倒计时满后自动安全退出
                     val remaining = (bufferMillis - elapsedSinceArrival).coerceAtLeast(5000L)
-                    handler.postDelayed(tickerRunnable, remaining)
+                    handler.postDelayed({
+                        if (currentOrderNo == trip.orderNo) {
+                            stopSelf()
+                        }
+                    }, remaining)
+                    return
+                } else if (elapsedSinceArrival >= bufferMillis) {
+                    // 启动时就已经到达超过 15 分钟（用户手动开启查看已结束/历史车票）：
+                    // 严禁在此处立即 stopSelf() 闪退秒杀！正常维持已到达状态展示，由用户随时手动关闭
+                    handler.postDelayed(tickerRunnable, 3600_000L)
                     return
                 }
             } else {

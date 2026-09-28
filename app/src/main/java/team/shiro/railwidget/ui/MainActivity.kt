@@ -268,6 +268,7 @@ class MainActivity : ComponentActivity() {
         }
 
         fun toggleIslandForTrip(orderNo: String) {
+            val targetTrip = trips.find { it.orderNo == orderNo }
             if (isIslandRunning && activeIslandOrderNo == orderNo) {
                 LiveIslandService.stop(context)
                 isIslandRunning = false
@@ -284,7 +285,13 @@ class MainActivity : ComponentActivity() {
                     isIslandRunning = true
                     activeIslandOrderNo = orderNo
                     scope.launch {
-                        snackbarHostState.showSnackbar("已开启灵动胶囊，实时显示发车倒计时与检票口")
+                        val isPastTrip = targetTrip?.let { it.getStage() == TripStage.COMPLETED } ?: false
+                        val tip = if (isPastTrip) {
+                            "已开启历史车次胶囊预览，可随时点击关闭"
+                        } else {
+                            "已开启灵动胶囊，实时显示发车倒计时与检票口"
+                        }
+                        snackbarHostState.showSnackbar(tip)
                     }
                 }
             }

@@ -634,7 +634,7 @@ fun HeroTripCard(
                     }
                 }
 
-                if (onToggleIsland != null) {
+                if ((!isCompleted || isIslandRunning) && onToggleIsland != null) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(8.dp),
