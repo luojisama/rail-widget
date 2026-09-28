@@ -172,8 +172,8 @@ fun HeroTripCard(
                 if (onToggleIsland != null) {
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isIslandRunning) Color(0xFF0F172A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                        border = if (isIslandRunning) BorderStroke(1.dp, Color(0xFF38BDF8)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                        color = if (isIslandRunning) Color(0xFFFEF2F2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        border = if (isIslandRunning) BorderStroke(1.dp, Color(0xFFFCA5A5)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
                         modifier = Modifier.clickable { onToggleIsland() }
                     ) {
                         Row(
@@ -181,10 +181,10 @@ fun HeroTripCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (isIslandRunning) "胶囊运行中" else "灵动岛",
+                                text = if (isIslandRunning) "关闭胶囊" else "灵动岛",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isIslandRunning) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isIslandRunning) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (isIslandRunning) {
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -192,7 +192,7 @@ fun HeroTripCard(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF10B981))
+                                        .background(Color(0xFFDC2626))
                                 )
                             }
                         }
@@ -556,8 +556,8 @@ fun HeroTripCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isIslandRunning) Color(0xFF0F172A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                        border = if (isIslandRunning) BorderStroke(1.dp, Color(0xFF38BDF8)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        color = if (isIslandRunning) Color(0xFFFEF2F2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = if (isIslandRunning) BorderStroke(1.dp, Color(0xFFFCA5A5)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                         modifier = Modifier.clickable { onToggleIsland() }
                     ) {
                         Row(
@@ -565,10 +565,10 @@ fun HeroTripCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                         ) {
                             Text(
-                                text = if (isIslandRunning) "胶囊运行中" else "开启灵动岛",
+                                text = if (isIslandRunning) "关闭灵动岛" else "开启灵动岛",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isIslandRunning) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isIslandRunning) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (isIslandRunning) {
                                 Spacer(modifier = Modifier.width(5.dp))
@@ -576,7 +576,7 @@ fun HeroTripCard(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(Color(0xFF10B981))
+                                        .background(Color(0xFFDC2626))
                                 )
                             }
                         }

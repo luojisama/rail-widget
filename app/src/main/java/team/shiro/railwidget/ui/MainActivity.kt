@@ -202,6 +202,7 @@ class MainActivity : ComponentActivity() {
 
         // Live Island states
         var isIslandRunning by remember { mutableStateOf(LiveIslandService.isServiceRunning) }
+        var activeIslandOrderNo by remember { mutableStateOf<String?>(if (LiveIslandService.isServiceRunning) LiveIslandService.currentOrderNo else null) }
         var showIslandPermissionDialog by remember { mutableStateOf(false) }
         var pendingIslandOrderNo by remember { mutableStateOf<String?>(null) }
 
@@ -214,11 +215,17 @@ class MainActivity : ComponentActivity() {
         val activity = context as? MainActivity
         activity?.onResumeCallback = {
             isIslandRunning = LiveIslandService.isServiceRunning
+            if (!isIslandRunning) {
+                activeIslandOrderNo = null
+            } else if (activeIslandOrderNo == null) {
+                activeIslandOrderNo = LiveIslandService.currentOrderNo
+            }
             val pending = pendingIslandOrderNo
             if (pending != null && IslandPermissionHelper.hasOverlayPermission(context)) {
                 pendingIslandOrderNo = null
                 LiveIslandService.start(context, pending)
                 isIslandRunning = true
+                activeIslandOrderNo = pending
                 scope.launch {
                     snackbarHostState.showSnackbar("已开启灵动胶囊，实时显示发车倒计时与检票口")
                 }
@@ -240,9 +247,10 @@ class MainActivity : ComponentActivity() {
         }
 
         fun toggleIslandForTrip(orderNo: String) {
-            if (isIslandRunning && LiveIslandService.currentOrderNo == orderNo) {
+            if (isIslandRunning && activeIslandOrderNo == orderNo) {
                 LiveIslandService.stop(context)
                 isIslandRunning = false
+                activeIslandOrderNo = null
                 scope.launch {
                     snackbarHostState.showSnackbar("已关闭灵动胶囊")
                 }
@@ -253,6 +261,7 @@ class MainActivity : ComponentActivity() {
                 } else {
                     LiveIslandService.start(context, orderNo)
                     isIslandRunning = true
+                    activeIslandOrderNo = orderNo
                     scope.launch {
                         snackbarHostState.showSnackbar("已开启灵动胶囊，实时显示发车倒计时与检票口")
                     }
@@ -625,7 +634,7 @@ class MainActivity : ComponentActivity() {
                                 )
                                 HeroTripCard(
                                     trip = upcomingTrips.first(),
-                                    isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == upcomingTrips.first().orderNo,
+                                    isIslandRunning = isIslandRunning && activeIslandOrderNo == upcomingTrips.first().orderNo,
                                     onToggleIsland = {
                                         toggleIslandForTrip(upcomingTrips.first().orderNo)
                                     },
@@ -658,7 +667,7 @@ class MainActivity : ComponentActivity() {
                                 items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
                                     HeroTripCard(
                                         trip = trip,
-                                        isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == trip.orderNo,
+                                        isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                         onToggleIsland = {
                                             toggleIslandForTrip(trip.orderNo)
                                         },
@@ -712,7 +721,7 @@ class MainActivity : ComponentActivity() {
                             items(inTransitTrips, key = { it.orderNo }) { trip ->
                                 HeroTripCard(
                                     trip = trip,
-                                    isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == trip.orderNo,
+                                    isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                     onToggleIsland = {
                                         toggleIslandForTrip(trip.orderNo)
                                     },
@@ -762,7 +771,7 @@ class MainActivity : ComponentActivity() {
                             items(completedTrips, key = { it.orderNo }) { trip ->
                                 HeroTripCard(
                                     trip = trip,
-                                    isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == trip.orderNo,
+                                    isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                     onToggleIsland = {
                                         toggleIslandForTrip(trip.orderNo)
                                     },

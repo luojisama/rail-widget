@@ -5,26 +5,23 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
-import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.core.content.ContextCompat
-import team.shiro.railwidget.R
 import team.shiro.railwidget.data.model.Trip
 import team.shiro.railwidget.data.model.TripStage
 import team.shiro.railwidget.ui.MainActivity
 
 /**
- * 灵动岛 / 实时胶囊全屏覆盖层视图控制器
+ * 灵动岛 / 实时胶囊悬浮层控制器
  * 兼容 MIUI 14、HyperOS 以及 Android 12~15
  */
 class LiveIslandView(private val context: Context) {
@@ -41,7 +38,6 @@ class LiveIslandView(private val context: Context) {
     // 折叠态布局 (Compact Island)
     private val compactLayout = LinearLayout(context)
     private val tvCompactTrain = TextView(context)
-    private val spacerHole = View(context)
     private val tvCompactGate = TextView(context)
     private val tvCompactTime = TextView(context)
 
@@ -49,6 +45,7 @@ class LiveIslandView(private val context: Context) {
     private val expandedLayout = LinearLayout(context)
     private val tvExpandedTitle = TextView(context)
     private val tvExpandedStatus = TextView(context)
+    private val btnCloseExpanded = TextView(context)
     private val tvExpandedRoute = TextView(context)
     private val tvExpandedTimes = TextView(context)
     private val tvExpandedSeat = TextView(context)
@@ -58,36 +55,33 @@ class LiveIslandView(private val context: Context) {
     private val windowParams: WindowManager.LayoutParams
 
     init {
+        val dp = context.resources.displayMetrics.density
         val statusBarHeight = getStatusBarHeight(context)
-        val cutoutBounds = getCameraCutoutBounds()
 
+        // 默认折叠态：悬浮于系统状态栏下方 4dp，不与状态栏图标冲突，100% 灵敏接收点击
         windowParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                WindowManager.LayoutParams.TYPE_PHONE,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = if (cutoutBounds != null && cutoutBounds.top > 0) {
-                cutoutBounds.top
-            } else {
-                (statusBarHeight * 0.15f).toInt()
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
-            }
+            y = statusBarHeight + (4 * dp).toInt()
         }
 
-        setupViews(cutoutBounds)
+        setupViews()
     }
 
-    private fun setupViews(cutoutBounds: Rect?) {
+    private fun setupViews() {
         val dp = context.resources.displayMetrics.density
 
-        // 1. 根容器点击事件（展开态时点击透明背景收起）
+        // 1. 根容器点击事件（展开态时点击透明蒙层收起）
         rootContainer.setOnClickListener {
             if (isExpanded) {
                 collapse()
@@ -97,54 +91,63 @@ class LiveIslandView(private val context: Context) {
         // 2. 灵动岛核心卡片容器
         val islandBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = 20 * dp
+            cornerRadius = 18 * dp
             setColor(Color.parseColor("#0B0F19")) // 深邃黑曜石
             setStroke((1 * dp).toInt(), Color.parseColor("#334155")) // 细腻微光边框
         }
         islandCard.background = islandBg
         islandCard.elevation = 16 * dp
 
-        islandCard.setOnClickListener {
+        // 点击与触摸反馈
+        val clickListener = View.OnClickListener {
             if (!isExpanded) {
                 expand()
             }
         }
+        islandCard.setOnClickListener(clickListener)
+        compactLayout.setOnClickListener(clickListener)
+
+        val touchListener = View.OnTouchListener { v, event ->
+            if (!isExpanded) {
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(80).start()
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(80).start()
+                    }
+                }
+            }
+            false
+        }
+        islandCard.setOnTouchListener(touchListener)
+        compactLayout.setOnTouchListener(touchListener)
 
         // ==========================================
         // 3. 构建折叠态布局 (Compact Island)
         // ==========================================
         compactLayout.orientation = LinearLayout.HORIZONTAL
         compactLayout.gravity = Gravity.CENTER_VERTICAL
-        compactLayout.setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
+        compactLayout.setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
 
-        // 车次图标与名称
+        // 车次徽章
         tvCompactTrain.setTextColor(Color.WHITE)
         tvCompactTrain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
         tvCompactTrain.setTypeface(null, android.graphics.Typeface.BOLD)
         compactLayout.addView(tvCompactTrain)
 
-        // 摄像头挖孔安全避让垫片（若为居中开孔则撑开对应宽度）
-        val screenWidth = context.resources.displayMetrics.widthPixels
-        val holeWidth = if (cutoutBounds != null && kotlin.math.abs(cutoutBounds.centerX() - screenWidth / 2) < 50 * dp) {
-            cutoutBounds.width().coerceAtLeast((24 * dp).toInt())
-        } else {
-            (14 * dp).toInt()
+        // 间隔
+        val spacer1 = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams((8 * dp).toInt(), 1)
         }
-        val spacerParams = LinearLayout.LayoutParams(holeWidth, 1)
-        spacerHole.layoutParams = spacerParams
-        compactLayout.addView(spacerHole)
+        compactLayout.addView(spacer1)
 
-        // 右侧倒计时/状态指示
+        // 倒计时 / 状态指示
         tvCompactTime.setTextColor(Color.parseColor("#94A3B8"))
         tvCompactTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         compactLayout.addView(tvCompactTime)
 
-        val gateSpacer = View(context).apply {
-            layoutParams = LinearLayout.LayoutParams((4 * dp).toInt(), 1)
-        }
-        compactLayout.addView(gateSpacer)
-
-        // 右侧醒目检票口胶囊
+        // 检票口药丸
         val gateBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 5 * dp
@@ -155,6 +158,13 @@ class LiveIslandView(private val context: Context) {
         tvCompactGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         tvCompactGate.setTypeface(null, android.graphics.Typeface.BOLD)
         tvCompactGate.setPadding((6 * dp).toInt(), (1 * dp).toInt(), (6 * dp).toInt(), (1 * dp).toInt())
+        val gateParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            leftMargin = (8 * dp).toInt()
+        }
+        tvCompactGate.layoutParams = gateParams
         compactLayout.addView(tvCompactGate)
 
         islandCard.addView(compactLayout)
@@ -163,87 +173,101 @@ class LiveIslandView(private val context: Context) {
         // 4. 构建展开态布局 (Expanded Island)
         // ==========================================
         expandedLayout.orientation = LinearLayout.VERTICAL
-        expandedLayout.setPadding((16 * dp).toInt(), (14 * dp).toInt(), (16 * dp).toInt(), (14 * dp).toInt())
         expandedLayout.visibility = View.GONE
+        expandedLayout.setPadding((18 * dp).toInt(), (16 * dp).toInt(), (18 * dp).toInt(), (16 * dp).toInt())
 
-        // 顶栏：车次 + 状态药丸
-        val topRow = LinearLayout(context).apply {
+        // 头部行：车次 + 状态药丸 + 关闭按钮
+        val headerRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
+
         tvExpandedTitle.setTextColor(Color.WHITE)
         tvExpandedTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
         tvExpandedTitle.setTypeface(null, android.graphics.Typeface.BOLD)
-        topRow.addView(tvExpandedTitle, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        headerRow.addView(tvExpandedTitle)
 
+        val headerSpacer = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+        }
+        headerRow.addView(headerSpacer)
+
+        val statusBg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 6 * dp
+        }
+        tvExpandedStatus.background = statusBg
         tvExpandedStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
         tvExpandedStatus.setTypeface(null, android.graphics.Typeface.BOLD)
         tvExpandedStatus.setPadding((8 * dp).toInt(), (2 * dp).toInt(), (8 * dp).toInt(), (2 * dp).toInt())
-        val statusBg = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 8 * dp
-            setColor(Color.parseColor("#1E293B"))
-        }
-        tvExpandedStatus.background = statusBg
-        topRow.addView(tvExpandedStatus)
+        headerRow.addView(tvExpandedStatus)
 
-        expandedLayout.addView(topRow)
+        // 展开态右上角收起图标 ✕
+        btnCloseExpanded.text = " ✕ "
+        btnCloseExpanded.setTextColor(Color.parseColor("#94A3B8"))
+        btnCloseExpanded.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+        btnCloseExpanded.setPadding((8 * dp).toInt(), (2 * dp).toInt(), 0, (2 * dp).toInt())
+        btnCloseExpanded.setOnClickListener { collapse() }
+        headerRow.addView(btnCloseExpanded)
 
-        // 中间行：始发 ➔ 终到
-        tvExpandedRoute.setTextColor(Color.WHITE)
-        tvExpandedRoute.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+        expandedLayout.addView(headerRow)
+
+        // 行程发到站
+        tvExpandedRoute.setTextColor(Color.parseColor("#F8FAFC"))
+        tvExpandedRoute.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19f)
         tvExpandedRoute.setTypeface(null, android.graphics.Typeface.BOLD)
-        tvExpandedRoute.setPadding(0, (6 * dp).toInt(), 0, 0)
+        tvExpandedRoute.setPadding(0, (12 * dp).toInt(), 0, (4 * dp).toInt())
         expandedLayout.addView(tvExpandedRoute)
 
-        // 时刻行：发车时刻 ➔ 到站时刻
+        // 发到时刻
         tvExpandedTimes.setTextColor(Color.parseColor("#94A3B8"))
         tvExpandedTimes.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        tvExpandedTimes.setPadding(0, 0, 0, (10 * dp).toInt())
         expandedLayout.addView(tvExpandedTimes)
 
-        // 分隔线
+        // 分割线
         val divider = View(context).apply {
-            setBackgroundColor(Color.parseColor("#1E293B"))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (1 * dp).toInt()).apply {
-                topMargin = (10 * dp).toInt()
                 bottomMargin = (10 * dp).toInt()
             }
+            setBackgroundColor(Color.parseColor("#1E293B"))
         }
         expandedLayout.addView(divider)
 
-        // 底栏：席位信息 + 检票口大徽章 + 直达 App 按钮
+        // 席位与车厢
+        tvExpandedSeat.setTextColor(Color.parseColor("#CBD5E1"))
+        tvExpandedSeat.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        expandedLayout.addView(tvExpandedSeat)
+
+        // 底部操作区：检票口 + 进入铁行卡片按钮
         val bottomRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, (14 * dp).toInt(), 0, 0)
         }
-
-        val seatCol = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        tvExpandedSeat.setTextColor(Color.parseColor("#E2E8F0"))
-        tvExpandedSeat.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        tvExpandedSeat.setTypeface(null, android.graphics.Typeface.BOLD)
-        seatCol.addView(tvExpandedSeat)
 
         tvExpandedGate.setTextColor(Color.parseColor("#EF4444"))
-        tvExpandedGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        tvExpandedGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
         tvExpandedGate.setTypeface(null, android.graphics.Typeface.BOLD)
-        seatCol.addView(tvExpandedGate)
+        bottomRow.addView(tvExpandedGate)
 
-        bottomRow.addView(seatCol, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val bottomSpacer = View(context).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+        }
+        bottomRow.addView(bottomSpacer)
 
-        // 直达 App 胶囊按钮
         val btnBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = 12 * dp
-            setColor(Color.parseColor("#0284C7"))
+            cornerRadius = 8 * dp
+            setColor(Color.parseColor("#1E293B"))
+            setStroke((1 * dp).toInt(), Color.parseColor("#334155"))
         }
         btnOpenApp.background = btnBg
-        btnOpenApp.text = "进入卡片 ↗"
-        btnOpenApp.setTextColor(Color.WHITE)
+        btnOpenApp.text = "进入铁行卡片 ↗"
+        btnOpenApp.setTextColor(Color.parseColor("#38BDF8"))
         btnOpenApp.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         btnOpenApp.setTypeface(null, android.graphics.Typeface.BOLD)
-        btnOpenApp.setPadding((12 * dp).toInt(), (6 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
+        btnOpenApp.setPadding((10 * dp).toInt(), (6 * dp).toInt(), (10 * dp).toInt(), (6 * dp).toInt())
         btnOpenApp.setOnClickListener {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -271,13 +295,13 @@ class LiveIslandView(private val context: Context) {
      */
     fun updateTrip(trip: Trip) {
         currentTrip = trip
-        val dp = context.resources.displayMetrics.density
 
         // 1. 更新折叠态
         tvCompactTrain.text = "🚄 ${trip.trainCode}"
         val gate = trip.getCleanTicketGate()
-        if (gate.isNotBlank() && gate != "暂无") {
-            tvCompactGate.text = gate
+        val shortGate = getShortGate(gate)
+        if (shortGate.isNotBlank()) {
+            tvCompactGate.text = shortGate
             tvCompactGate.visibility = View.VISIBLE
         } else {
             tvCompactGate.visibility = View.GONE
@@ -343,13 +367,18 @@ class LiveIslandView(private val context: Context) {
         isExpanded = true
 
         val dp = context.resources.displayMetrics.density
+        val statusBarHeight = getStatusBarHeight(context)
 
         // 窗口尺寸切换为全屏透明容器，以便捕获外部点击收起手势
         windowParams.width = WindowManager.LayoutParams.MATCH_PARENT
         windowParams.height = WindowManager.LayoutParams.MATCH_PARENT
         windowParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        windowParams.y = 0
+
+        val cardLp = islandCard.layoutParams as FrameLayout.LayoutParams
+        cardLp.topMargin = statusBarHeight + (4 * dp).toInt()
+        islandCard.layoutParams = cardLp
 
         try {
             windowManager.updateViewLayout(rootContainer, windowParams)
@@ -358,7 +387,6 @@ class LiveIslandView(private val context: Context) {
         compactLayout.visibility = View.GONE
         expandedLayout.visibility = View.VISIBLE
 
-        val cardLp = islandCard.layoutParams as FrameLayout.LayoutParams
         val targetWidth = (340 * dp).toInt()
         val targetRadius = 24 * dp
 
@@ -369,7 +397,7 @@ class LiveIslandView(private val context: Context) {
                 val progress = anim.animatedFraction
                 cardLp.width = (progress * targetWidth).toInt().coerceAtLeast((180 * dp).toInt())
                 islandCard.layoutParams = cardLp
-                (islandCard.background as? GradientDrawable)?.cornerRadius = 20 * dp + (targetRadius - 20 * dp) * progress
+                (islandCard.background as? GradientDrawable)?.cornerRadius = 18 * dp + (targetRadius - 18 * dp) * progress
             }
         }
         animator.start()
@@ -383,18 +411,25 @@ class LiveIslandView(private val context: Context) {
         isExpanded = false
 
         val dp = context.resources.displayMetrics.density
+        val statusBarHeight = getStatusBarHeight(context)
 
         expandedLayout.visibility = View.GONE
         compactLayout.visibility = View.VISIBLE
 
         val cardLp = islandCard.layoutParams as FrameLayout.LayoutParams
         cardLp.width = FrameLayout.LayoutParams.WRAP_CONTENT
+        cardLp.topMargin = 0
         islandCard.layoutParams = cardLp
-        (islandCard.background as? GradientDrawable)?.cornerRadius = 20 * dp
+        (islandCard.background as? GradientDrawable)?.cornerRadius = 18 * dp
 
-        // 恢复紧凑型 WindowParams，释放屏幕其他区域的触摸穿透
+        // 恢复紧凑型 WindowParams，悬浮在状态栏正下方，允许外部触摸穿透
         windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT
         windowParams.height = WindowManager.LayoutParams.WRAP_CONTENT
+        windowParams.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        windowParams.y = statusBarHeight + (4 * dp).toInt()
+
         try {
             windowManager.updateViewLayout(rootContainer, windowParams)
         } catch (_: Exception) {}
@@ -424,6 +459,23 @@ class LiveIslandView(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    private fun getShortGate(gate: String): String {
+        val clean = gate.removePrefix("检票口").trim()
+        if (clean.isBlank() || clean == "暂无") return ""
+        val slashIndex = clean.lastIndexOf('/')
+        if (slashIndex >= 0 && slashIndex < clean.length - 1) {
+            val after = clean.substring(slashIndex + 1).trim()
+            if (after.any { it.isDigit() }) return after
+        }
+        // 如果包含站名，提取后面的数字+字母部分，如 "呈贡昆明南站16A" -> "16A"
+        val regex = Regex("([0-9]{1,2}[A-Za-z](?:/[A-Za-z])?|[0-9]{1,2}号?)")
+        val match = regex.find(clean)
+        if (match != null) {
+            return match.value
+        }
+        return if (clean.length > 6) clean.takeLast(4) else clean
+    }
+
     private fun getCountdownText(trip: Trip): String {
         return try {
             val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
@@ -440,18 +492,6 @@ class LiveIslandView(private val context: Context) {
         } catch (_: Exception) {
             "候车"
         }
-    }
-
-    private fun getCameraCutoutBounds(): Rect? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return try {
-                val cutout = windowManager.currentWindowMetrics.windowInsets.displayCutout
-                cutout?.boundingRectTop?.takeIf { !it.isEmpty }
-            } catch (_: Exception) {
-                null
-            }
-        }
-        return null
     }
 
     private fun getStatusBarHeight(context: Context): Int {
