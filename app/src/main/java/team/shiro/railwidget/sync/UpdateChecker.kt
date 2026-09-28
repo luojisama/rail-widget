@@ -164,52 +164,64 @@ object UpdateChecker {
     }
 
     fun checkUpdate(): Result<UpdateInfo> {
-        return try {
-            val url = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
-            val request = Request.Builder()
-                .url(url)
-                .header("Accept", "application/vnd.github.v3+json")
-                .header("User-Agent", "RailCard-Android")
-                .build()
+        val candidateUrls = listOf(
+            "https://api.github.com/repos/$GITHUB_REPO/releases/latest",
+            "https://ghfast.top/https://api.github.com/repos/$GITHUB_REPO/releases/latest",
+            "https://ghproxy.net/https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+        )
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return Result.failure(Exception("检查更新失败: HTTP ${response.code}"))
-                }
-                val body = response.body?.string() ?: return Result.failure(Exception("空响应"))
-                val json = JSONObject(body)
+        var lastException: Exception? = null
 
-                val tagName = json.optString("tag_name").removePrefix("v").trim()
-                val releaseNotes = json.optString("body")
-                val htmlUrl = json.optString("html_url")
+        for (url in candidateUrls) {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/vnd.github.v3+json")
+                    .header("User-Agent", "RailCard-Android")
+                    .build()
 
-                var apkDownloadUrl = ""
-                val assets = json.optJSONArray("assets")
-                if (assets != null) {
-                    for (i in 0 until assets.length()) {
-                        val asset = assets.getJSONObject(i)
-                        val name = asset.optString("name")
-                        if (name.endsWith(".apk")) {
-                            apkDownloadUrl = asset.optString("browser_download_url")
-                            break
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        lastException = Exception("检查更新失败: HTTP ${response.code}")
+                        return@use
+                    }
+                    val body = response.body?.string() ?: return@use
+                    val json = JSONObject(body)
+
+                    val tagName = json.optString("tag_name").removePrefix("v").trim()
+                    val releaseNotes = json.optString("body")
+                    val htmlUrl = json.optString("html_url")
+
+                    var apkDownloadUrl = ""
+                    val assets = json.optJSONArray("assets")
+                    if (assets != null) {
+                        for (i in 0 until assets.length()) {
+                            val asset = assets.getJSONObject(i)
+                            val name = asset.optString("name")
+                            if (name.endsWith(".apk")) {
+                                apkDownloadUrl = asset.optString("browser_download_url")
+                                break
+                            }
                         }
                     }
-                }
 
-                val hasUpdate = isNewerVersion(tagName, CURRENT_VERSION)
-                Result.success(
-                    UpdateInfo(
-                        latestVersion = tagName,
-                        releaseNotes = releaseNotes,
-                        downloadUrl = apkDownloadUrl,
-                        htmlUrl = htmlUrl,
-                        hasUpdate = hasUpdate
+                    val hasUpdate = isNewerVersion(tagName, CURRENT_VERSION)
+                    return Result.success(
+                        UpdateInfo(
+                            latestVersion = tagName,
+                            releaseNotes = releaseNotes,
+                            downloadUrl = apkDownloadUrl,
+                            htmlUrl = htmlUrl,
+                            hasUpdate = hasUpdate
+                        )
                     )
-                )
+                }
+            } catch (e: Exception) {
+                lastException = e
             }
-        } catch (e: Exception) {
-            Result.failure(e)
         }
+
+        return Result.failure(lastException ?: Exception("网络连接超时，无法连接更新服务器"))
     }
 
     fun downloadAndInstall(
