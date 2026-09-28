@@ -54,8 +54,17 @@ object TripWidgetRenderer {
 
         val views = RemoteViews(context.packageName, R.layout.widget_trip_2x2)
         views.setTextViewText(R.id.tv_train_code, trip.trainCode)
-        val depTime2x2 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else "${trip.departureTime} 开"
-        views.setTextViewText(R.id.tv_dep_time, depTime2x2)
+
+        val stage = trip.getStage()
+        if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) {
+            views.setTextViewText(R.id.tv_dep_time, "● 运行中")
+            views.setTextColor(R.id.tv_dep_time, android.graphics.Color.parseColor("#0F766E"))
+        } else {
+            val depTime2x2 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else "${trip.departureTime} 开"
+            views.setTextViewText(R.id.tv_dep_time, depTime2x2)
+            views.setTextColor(R.id.tv_dep_time, android.graphics.Color.parseColor("#1A1C1E"))
+        }
+
         views.setTextViewText(R.id.tv_route, "${trip.departureStation} ➔ ${trip.arrivalStation}")
         val seatStr = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
             val ticketTag = if (trip.ticketType == "列车补票") " (补)" else ""
@@ -68,7 +77,9 @@ object TripWidgetRenderer {
         val gate = trip.getCleanTicketGate()
         views.setTextViewText(R.id.tv_gate, if (gate.isBlank()) "检票口 --" else gate)
 
+        // 根区域与检票口独立点击热区
         views.setOnClickPendingIntent(R.id.widget_root, createOpenAppIntent(context, trip.orderNo))
+        views.setOnClickPendingIntent(R.id.tv_gate, createOpenAppIntent(context, trip.orderNo, focusGate = true))
         return views
     }
 
@@ -82,7 +93,37 @@ object TripWidgetRenderer {
         val views = RemoteViews(context.packageName, R.layout.widget_trip_4x2)
         views.setTextViewText(R.id.tv_train_code, trip.trainCode)
         views.setTextViewText(R.id.tv_date, trip.departureDate.substringAfter("-"))
-        views.setTextViewText(R.id.tv_status, trip.computeStatus())
+
+        // 状态自适应背景与色彩
+        val stage = trip.getStage()
+        val statusText = when {
+            stage == team.shiro.railwidget.data.model.TripStage.COMPLETED -> "已结束"
+            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT -> "运行中"
+            else -> trip.computeStatus()
+        }
+        views.setTextViewText(R.id.tv_status, statusText)
+        when (statusText) {
+            "正在检票" -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_boarding)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#BA1A1A"))
+            }
+            "运行中" -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_intransit)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#004F98"))
+            }
+            "已结束", "已到达" -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_completed)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#64748B"))
+            }
+            else -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#005AC1"))
+            }
+        }
+
+        // 动态路线指示
+        val arrowText = if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) "●──➔ 运行中" else "──────➔"
+        views.setTextViewText(R.id.tv_route_arrow, arrowText)
 
         val depTime4x2 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else trip.departureTime
         views.setTextViewText(R.id.tv_dep_time, depTime4x2)
@@ -103,7 +144,9 @@ object TripWidgetRenderer {
         val gate = trip.getCleanTicketGate()
         views.setTextViewText(R.id.tv_gate, if (gate.isBlank() || gate == "暂无") "检票口 未出" else "检票口 $gate")
 
+        // 根区域与检票口独立点击热区
         views.setOnClickPendingIntent(R.id.widget_root, createOpenAppIntent(context, trip.orderNo))
+        views.setOnClickPendingIntent(R.id.tv_gate, createOpenAppIntent(context, trip.orderNo, focusGate = true))
         return views
     }
 
@@ -118,7 +161,37 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_train_code, trip.trainCode)
         views.setTextViewText(R.id.tv_passenger, trip.passengerName)
         views.setTextViewText(R.id.tv_date, trip.departureDate)
-        views.setTextViewText(R.id.tv_status, trip.computeStatus())
+
+        // 状态自适应背景与色彩
+        val stage = trip.getStage()
+        val statusText = when {
+            stage == team.shiro.railwidget.data.model.TripStage.COMPLETED -> "已结束"
+            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT -> "运行中"
+            else -> trip.computeStatus()
+        }
+        views.setTextViewText(R.id.tv_status, statusText)
+        when (statusText) {
+            "正在检票" -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_boarding)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#BA1A1A"))
+            }
+            "运行中" -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_intransit)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#004F98"))
+            }
+            "已结束", "已到达" -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_completed)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#64748B"))
+            }
+            else -> {
+                views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill)
+                views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#005AC1"))
+            }
+        }
+
+        // 动态路线指示
+        val arrowText = if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) "●──➔ 运行中" else "────────➔"
+        views.setTextViewText(R.id.tv_route_arrow, arrowText)
 
         val depTime4x4 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else trip.departureTime
         views.setTextViewText(R.id.tv_dep_time, depTime4x4)
@@ -212,21 +285,26 @@ object TripWidgetRenderer {
         )
         views.setOnClickPendingIntent(R.id.btn_refresh, refreshPendingIntent)
 
-        // Set root click intent
+        // Set root and gate click intents
         views.setOnClickPendingIntent(R.id.widget_root, createOpenAppIntent(context, trip.orderNo))
+        views.setOnClickPendingIntent(R.id.tv_gate, createOpenAppIntent(context, trip.orderNo, focusGate = true))
         return views
     }
 
-    private fun createOpenAppIntent(context: Context, orderNo: String? = null): PendingIntent {
+    private fun createOpenAppIntent(context: Context, orderNo: String? = null, focusGate: Boolean = false): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             if (orderNo != null) {
                 putExtra("extra_order_no", orderNo)
             }
+            if (focusGate) {
+                putExtra("extra_focus_gate", true)
+            }
         }
+        val requestCode = if (focusGate) 102 else (orderNo?.hashCode() ?: 101)
         return PendingIntent.getActivity(
             context,
-            0,
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )

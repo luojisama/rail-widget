@@ -473,6 +473,7 @@ class LiveIslandView(private val context: Context) {
 
         compactLayout.visibility = View.GONE
         expandedLayout.visibility = View.VISIBLE
+        expandedLayout.alpha = 0f
 
         val targetWidth = (340 * dp).toInt()
         val targetRadius = 24 * dp
@@ -486,6 +487,8 @@ class LiveIslandView(private val context: Context) {
                 cardLp.width = (progress * targetWidth).toInt().coerceAtLeast((180 * dp).toInt())
                 islandCard.layoutParams = cardLp
                 (islandCard.background as? GradientDrawable)?.cornerRadius = initialRadius + (targetRadius - initialRadius) * progress
+                // 阶梯式淡入：前 20% 专注于黑曜石药丸弹簧张开，后 80% 平滑淡入内容，消除文字折行挤压
+                expandedLayout.alpha = if (progress < 0.2f) 0f else ((progress - 0.2f) / 0.8f).coerceIn(0f, 1f)
             }
         }
         animator.start()
@@ -502,6 +505,8 @@ class LiveIslandView(private val context: Context) {
 
         expandedLayout.visibility = View.GONE
         compactLayout.visibility = View.VISIBLE
+        compactLayout.alpha = 0f
+        compactLayout.animate().alpha(1f).setDuration(160).start()
 
         val cardLp = islandCard.layoutParams as FrameLayout.LayoutParams
         cardLp.width = FrameLayout.LayoutParams.WRAP_CONTENT

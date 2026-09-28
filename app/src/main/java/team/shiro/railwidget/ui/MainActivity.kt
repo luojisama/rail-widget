@@ -15,6 +15,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
@@ -463,43 +475,53 @@ class MainActivity : ComponentActivity() {
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
                         actions = {
-                            // 读取短信按钮
-                            if (isReadingSms) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(22.dp).padding(end = 8.dp),
-                                    strokeWidth = 2.dp
+                            val infiniteTransition = rememberInfiniteTransition(label = "topBarRotation")
+                            val spinAngle by infiniteTransition.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 360f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(durationMillis = 900, easing = LinearEasing)
+                                ),
+                                label = "spinAngle"
+                            )
+
+                            // 读取短信按钮 (同步时优雅微旋转，无缝零布局抖动)
+                            IconButton(
+                                onClick = { triggerSmsSync() },
+                                enabled = !isReadingSms
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Sms,
+                                    contentDescription = "读取 12306 短信",
+                                    tint = if (isReadingSms) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = if (isReadingSms) Modifier.rotate(spinAngle) else Modifier
                                 )
-                            } else {
-                                IconButton(onClick = { triggerSmsSync() }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Sms,
-                                        contentDescription = "读取 12306 短信"
-                                    )
-                                }
                             }
 
-                            // 邮箱同步按钮
-                            if (isSyncingMail) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(22.dp).padding(end = 8.dp),
-                                    strokeWidth = 2.dp
+                            // 邮箱同步按钮 (同步时平滑旋转)
+                            IconButton(
+                                onClick = { triggerMailSync() },
+                                enabled = !isSyncingMail
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "同步邮箱",
+                                    tint = if (isSyncingMail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = if (isSyncingMail) Modifier.rotate(spinAngle) else Modifier
                                 )
-                            } else {
-                                IconButton(onClick = { triggerMailSync() }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = "同步邮箱"
-                                    )
-                                }
                             }
 
                             // 检查更新按钮
-                            IconButton(onClick = { triggerCheckUpdate() }) {
-                                if (isCheckingUpdate) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                } else {
-                                    Icon(Icons.Default.SystemUpdate, contentDescription = "检查更新")
-                                }
+                            IconButton(
+                                onClick = { triggerCheckUpdate() },
+                                enabled = !isCheckingUpdate
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SystemUpdate,
+                                    contentDescription = "检查更新",
+                                    tint = if (isCheckingUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = if (isCheckingUpdate) Modifier.rotate(spinAngle) else Modifier
+                                )
                             }
 
                             // 设置按钮
@@ -571,100 +593,170 @@ class MainActivity : ComponentActivity() {
                 )
             }
         ) { paddingValues ->
-            LazyColumn(
+            AnimatedContent(
+                targetState = selectedTabIndex,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        (slideInHorizontally { width -> width / 4 } + fadeIn(animationSpec = tween(220)))
+                            .togetherWith(slideOutHorizontally { width -> -width / 4 } + fadeOut(animationSpec = tween(180)))
+                    } else {
+                        (slideInHorizontally { width -> -width / 4 } + fadeIn(animationSpec = tween(220)))
+                            .togetherWith(slideOutHorizontally { width -> width / 4 } + fadeOut(animationSpec = tween(180)))
+                    }
+                },
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues)
-                    .padding(horizontal = 16.dp)
-            ) {
-                when (selectedTabIndex) {
-                    0 -> {
-                        // TAB 0: 未出行
-                        if (upcomingTrips.isEmpty()) {
-                            item {
-                                EmptyUpcomingCard(
-                                    onReadSms = { triggerSmsSync() },
-                                    onSyncMail = { triggerMailSync() },
-                                    onManualPaste = { showImportDialog = true }
-                                )
-                            }
-                            if (completedTrips.isNotEmpty()) {
+                    .padding(paddingValues),
+                label = "tabContentTransition"
+            ) { targetTab ->
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp)
+                ) {
+                    when (targetTab) {
+                        0 -> {
+                            // TAB 0: 未出行
+                            if (upcomingTrips.isEmpty()) {
                                 item {
-                                    Surface(
-                                        shape = RoundedCornerShape(14.dp),
-                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(top = 10.dp)
-                                            .clickable { selectedTabIndex = 2 }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(14.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                    EmptyUpcomingCard(
+                                        onReadSms = { triggerSmsSync() },
+                                        onSyncMail = { triggerMailSync() },
+                                        onManualPaste = { showImportDialog = true }
+                                    )
+                                }
+                                if (completedTrips.isNotEmpty()) {
+                                    item {
+                                        Surface(
+                                            shape = RoundedCornerShape(14.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 10.dp)
+                                                .clickable { selectedTabIndex = 2 }
                                         ) {
-                                            Text("💡", fontSize = 20.sp)
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column {
-                                                Text(
-                                                    text = "想体验灵动胶囊 / 灵动岛？",
-                                                    fontWeight = FontWeight.Bold,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = "点击可前往「已结束」标签页，在任意历史车票右上角点击「灵动岛」快速查看悬浮胶囊效果！",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
+                                            Row(
+                                                modifier = Modifier.padding(14.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text("💡", fontSize = 20.sp)
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column {
+                                                    Text(
+                                                        text = "想体验灵动胶囊 / 灵动岛？",
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = "点击可前往「已结束」标签页，在任意历史车票右上角点击「灵动岛」快速查看悬浮胶囊效果！",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        } else {
-                            item {
-                                Text(
-                                    text = "即将出发",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
-                                )
-                                HeroTripCard(
-                                    trip = upcomingTrips.first(),
-                                    isIslandRunning = isIslandRunning && activeIslandOrderNo == upcomingTrips.first().orderNo,
-                                    onToggleIsland = {
-                                        toggleIslandForTrip(upcomingTrips.first().orderNo)
-                                    },
-                                    onArchive = {
-                                        db.setArchived(upcomingTrips.first().orderNo, true)
-                                        reloadTrips()
-                                    },
-                                    onDelete = {
-                                        db.deleteTrip(upcomingTrips.first().orderNo)
-                                        reloadTrips()
-                                    },
-                                    onRefreshTimetable = {
-                                        refreshTripTimetable(upcomingTrips.first())
-                                    },
-                                    onUpdateGate = { newGate ->
-                                        updateTripGate(upcomingTrips.first().orderNo, newGate)
-                                    }
-                                )
-                            }
-
-                            if (upcomingTrips.size > 1) {
+                            } else {
                                 item {
                                     Text(
-                                        text = "后续车次 (${upcomingTrips.size - 1})",
+                                        text = "即将出发",
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                                    )
+                                    HeroTripCard(
+                                        trip = upcomingTrips.first(),
+                                        isIslandRunning = isIslandRunning && activeIslandOrderNo == upcomingTrips.first().orderNo,
+                                        onToggleIsland = {
+                                            toggleIslandForTrip(upcomingTrips.first().orderNo)
+                                        },
+                                        onArchive = {
+                                            db.setArchived(upcomingTrips.first().orderNo, true)
+                                            reloadTrips()
+                                        },
+                                        onDelete = {
+                                            db.deleteTrip(upcomingTrips.first().orderNo)
+                                            reloadTrips()
+                                        },
+                                        onRefreshTimetable = {
+                                            refreshTripTimetable(upcomingTrips.first())
+                                        },
+                                        onUpdateGate = { newGate ->
+                                            updateTripGate(upcomingTrips.first().orderNo, newGate)
+                                        }
                                     )
                                 }
-                                items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
+
+                                if (upcomingTrips.size > 1) {
+                                    item {
+                                        Text(
+                                            text = "后续车次 (${upcomingTrips.size - 1})",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                                        )
+                                    }
+                                    items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
+                                        HeroTripCard(
+                                            trip = trip,
+                                            isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
+                                            onToggleIsland = {
+                                                toggleIslandForTrip(trip.orderNo)
+                                            },
+                                            onArchive = {
+                                                db.setArchived(trip.orderNo, true)
+                                                reloadTrips()
+                                            },
+                                            onDelete = {
+                                                db.deleteTrip(trip.orderNo)
+                                                reloadTrips()
+                                            },
+                                            onRefreshTimetable = {
+                                                refreshTripTimetable(trip)
+                                            },
+                                            onUpdateGate = { newGate ->
+                                                updateTripGate(trip.orderNo, newGate)
+                                            },
+                                            modifier = Modifier.animateItem()
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                    }
+                                }
+                            }
+
+                            // 小部件一键添加引导卡片
+                            item {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                WidgetPinGuideCard(
+                                    onPin2x2 = { requestPinWidget(TripWidget2x2Receiver::class.java) },
+                                    onPin4x2 = { requestPinWidget(TripWidget4x2Receiver::class.java) },
+                                    onPin4x4 = { requestPinWidget(TripWidget4x4Receiver::class.java) }
+                                )
+                            }
+                        }
+
+                        1 -> {
+                            // TAB 1: 在途中
+                            if (inTransitTrips.isEmpty()) {
+                                item {
+                                    InTransitEmptyCard()
+                                }
+                            } else {
+                                item {
+                                    Text(
+                                        text = "当前运行中 (${inTransitTrips.size})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
+                                    )
+                                }
+                                items(inTransitTrips, key = { it.orderNo }) { trip ->
                                     HeroTripCard(
                                         trip = trip,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
@@ -684,117 +776,66 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onUpdateGate = { newGate ->
                                             updateTripGate(trip.orderNo, newGate)
-                                        }
+                                        },
+                                        modifier = Modifier.animateItem()
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
                             }
                         }
 
-                        // 小部件一键添加引导卡片
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            WidgetPinGuideCard(
-                                onPin2x2 = { requestPinWidget(TripWidget2x2Receiver::class.java) },
-                                onPin4x2 = { requestPinWidget(TripWidget4x2Receiver::class.java) },
-                                onPin4x4 = { requestPinWidget(TripWidget4x4Receiver::class.java) }
-                            )
-                        }
-                    }
-
-                    1 -> {
-                        // TAB 1: 在途中
-                        if (inTransitTrips.isEmpty()) {
-                            item {
-                                InTransitEmptyCard()
-                            }
-                        } else {
-                            item {
-                                Text(
-                                    text = "当前运行中 (${inTransitTrips.size})",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.tertiary,
-                                    modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
-                                )
-                            }
-                            items(inTransitTrips, key = { it.orderNo }) { trip ->
-                                HeroTripCard(
-                                    trip = trip,
-                                    isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
-                                    onToggleIsland = {
-                                        toggleIslandForTrip(trip.orderNo)
-                                    },
-                                    onArchive = {
-                                        db.setArchived(trip.orderNo, true)
-                                        reloadTrips()
-                                    },
-                                    onDelete = {
-                                        db.deleteTrip(trip.orderNo)
-                                        reloadTrips()
-                                    },
-                                    onRefreshTimetable = {
-                                        refreshTripTimetable(trip)
-                                    },
-                                    onUpdateGate = { newGate ->
-                                        updateTripGate(trip.orderNo, newGate)
+                        2 -> {
+                            // TAB 2: 已结束 (统一使用 HeroTripCard)
+                            if (completedTrips.isEmpty()) {
+                                item {
+                                    CompletedEmptyCard()
+                                }
+                            } else {
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp, bottom = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "历史行程 (${completedTrips.size})",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
                                     }
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
-                        }
-                    }
-
-                    2 -> {
-                        // TAB 2: 已结束 (统一使用 HeroTripCard)
-                        if (completedTrips.isEmpty()) {
-                            item {
-                                CompletedEmptyCard()
-                            }
-                        } else {
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 16.dp, bottom = 8.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "历史行程 (${completedTrips.size})",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.outline
+                                }
+                                items(completedTrips, key = { it.orderNo }) { trip ->
+                                    HeroTripCard(
+                                        trip = trip,
+                                        isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
+                                        onToggleIsland = {
+                                            toggleIslandForTrip(trip.orderNo)
+                                        },
+                                        onArchive = {},
+                                        onDelete = {
+                                            db.deleteTrip(trip.orderNo)
+                                            reloadTrips()
+                                        },
+                                        onRefreshTimetable = {
+                                            refreshTripTimetable(trip)
+                                        },
+                                        onUpdateGate = { newGate ->
+                                            updateTripGate(trip.orderNo, newGate)
+                                        },
+                                        modifier = Modifier.animateItem()
                                     )
+                                    Spacer(modifier = Modifier.height(12.dp))
                                 }
                             }
-                            items(completedTrips, key = { it.orderNo }) { trip ->
-                                HeroTripCard(
-                                    trip = trip,
-                                    isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
-                                    onToggleIsland = {
-                                        toggleIslandForTrip(trip.orderNo)
-                                    },
-                                    onArchive = {},
-                                    onDelete = {
-                                        db.deleteTrip(trip.orderNo)
-                                        reloadTrips()
-                                    },
-                                    onRefreshTimetable = {
-                                        refreshTripTimetable(trip)
-                                    },
-                                    onUpdateGate = { newGate ->
-                                        updateTripGate(trip.orderNo, newGate)
-                                    }
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
                         }
                     }
-                }
 
-                item {
-                    Spacer(modifier = Modifier.height(88.dp))
+                    item {
+                        Spacer(modifier = Modifier.height(88.dp))
+                    }
                 }
             }
         }

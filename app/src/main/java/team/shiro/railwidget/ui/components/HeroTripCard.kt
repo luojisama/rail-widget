@@ -1,6 +1,17 @@
 package team.shiro.railwidget.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +33,6 @@ import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
@@ -46,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -75,11 +86,23 @@ fun HeroTripCard(
     val isInTransit = stage == TripStage.IN_TRANSIT
     // 历史已结束行程默认折叠表格，避免大表格霸屏；未出行或进行中行程可展开浏览
     var isExpandedTable by remember(trip.orderNo) { mutableStateOf(!isCompleted && trip.stops.size > 2) }
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (isExpandedTable) 180f else 0f,
+        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+        label = "arrowRotation"
+    )
     var showEditGateDialog by remember { mutableStateOf(false) }
     var editingGateText by remember(trip.ticketGate) { mutableStateOf(trip.ticketGate.removePrefix("检票口")) }
 
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    stiffness = Spring.StiffnessMediumLow,
+                    dampingRatio = Spring.DampingRatioLowBouncy
+                )
+            ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
@@ -168,13 +191,31 @@ fun HeroTripCard(
                     }
                 }
 
-                // 灵动岛快捷胶囊开关 (右上角醒目位置)
+                // 灵动岛快捷胶囊开关 (右上角醒目位置，带 Material 3 平滑状态色彩过渡)
                 if (onToggleIsland != null) {
+                    val islandBtnBg by animateColorAsState(
+                        targetValue = if (isIslandRunning) Color(0xFFFEF2F2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        animationSpec = tween(durationMillis = 200),
+                        label = "islandBtnBg"
+                    )
+                    val islandBtnBorder by animateColorAsState(
+                        targetValue = if (isIslandRunning) Color(0xFFFCA5A5) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                        animationSpec = tween(durationMillis = 200),
+                        label = "islandBtnBorder"
+                    )
+                    val islandBtnText by animateColorAsState(
+                        targetValue = if (isIslandRunning) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        animationSpec = tween(durationMillis = 200),
+                        label = "islandBtnText"
+                    )
+
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = if (isIslandRunning) Color(0xFFFEF2F2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                        border = if (isIslandRunning) BorderStroke(1.dp, Color(0xFFFCA5A5)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
-                        modifier = Modifier.clickable { onToggleIsland() }
+                        color = islandBtnBg,
+                        border = BorderStroke(1.dp, islandBtnBorder),
+                        modifier = Modifier
+                            .animateContentSize(animationSpec = spring(stiffness = Spring.StiffnessMediumLow))
+                            .clickable { onToggleIsland() }
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -184,7 +225,7 @@ fun HeroTripCard(
                                 text = if (isIslandRunning) "关闭胶囊" else "灵动岛",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isIslandRunning) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = islandBtnText
                             )
                             if (isIslandRunning) {
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -484,15 +525,31 @@ fun HeroTripCard(
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     Icon(
-                        imageVector = if (isExpandedTable) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        imageVector = Icons.Default.ExpandMore,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier
+                            .size(16.dp)
+                            .rotate(arrowRotation),
                         tint = Color(0xFF94A3B8)
                     )
                 }
             }
 
-            AnimatedVisibility(visible = isExpandedTable) {
+            AnimatedVisibility(
+                visible = isExpandedTable,
+                enter = expandVertically(
+                    animationSpec = spring(
+                        stiffness = Spring.StiffnessMediumLow,
+                        dampingRatio = Spring.DampingRatioLowBouncy
+                    )
+                ) + fadeIn(animationSpec = tween(180)),
+                exit = shrinkVertically(
+                    animationSpec = spring(
+                        stiffness = Spring.StiffnessMediumLow,
+                        dampingRatio = Spring.DampingRatioNoBouncy
+                    )
+                ) + fadeOut(animationSpec = tween(140))
+            ) {
                 Column(modifier = Modifier.padding(top = 6.dp)) {
                     TimetableTable(
                         trip = trip,

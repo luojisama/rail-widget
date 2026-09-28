@@ -57,6 +57,18 @@ class TripWidget4x4Receiver : AppWidgetProvider() {
                 return
             }
 
+            // 桌面即时交互反馈：立刻局部更新刷新按钮为“⟳ 同步中...”状态，消除桌面迟钝感
+            try {
+                val appWidgetManager = AppWidgetManager.getInstance(context)
+                val comp4x4 = android.content.ComponentName(context, TripWidget4x4Receiver::class.java)
+                val ids4x4 = appWidgetManager.getAppWidgetIds(comp4x4)
+                if (ids4x4.isNotEmpty()) {
+                    val quickViews = android.widget.RemoteViews(context.packageName, team.shiro.railwidget.R.layout.widget_trip_4x4)
+                    quickViews.setTextViewText(team.shiro.railwidget.R.id.btn_refresh, "⟳ 同步中...")
+                    appWidgetManager.partiallyUpdateAppWidget(ids4x4, quickViews)
+                }
+            } catch (_: Exception) {}
+
             executor.execute {
                 val result = CloudMailClient.sync(mailUrl, mailUser, mailPass, db)
                 val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
