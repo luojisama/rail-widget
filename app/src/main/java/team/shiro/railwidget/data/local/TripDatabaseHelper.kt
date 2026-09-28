@@ -157,6 +157,17 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         return all.firstOrNull()
     }
 
+    fun getTrip(orderNo: String): Trip? {
+        val db = readableDatabase
+        val cursor = db.rawQuery("SELECT * FROM $TABLE_TRIPS WHERE order_no = ? LIMIT 1", arrayOf(orderNo))
+        cursor.use {
+            if (it.moveToNext()) {
+                return cursorToTrip(it)
+            }
+        }
+        return null
+    }
+
     fun deleteTrip(orderNo: String) {
         writableDatabase.delete(TABLE_TRIPS, "order_no = ?", arrayOf(orderNo))
     }

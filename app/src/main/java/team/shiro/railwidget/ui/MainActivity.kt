@@ -94,6 +94,8 @@ import team.shiro.railwidget.ui.components.HistoryTripItem
 import team.shiro.railwidget.ui.components.SettingsDialog
 import team.shiro.railwidget.ui.components.UpdateDialog
 import team.shiro.railwidget.ui.theme.RailWidgetTheme
+import team.shiro.railwidget.island.IslandPermissionHelper
+import team.shiro.railwidget.island.LiveIslandService
 import team.shiro.railwidget.widget.TripWidget2x2Receiver
 import team.shiro.railwidget.widget.TripWidget4x2Receiver
 import team.shiro.railwidget.widget.TripWidget4x4Receiver
@@ -103,6 +105,7 @@ class MainActivity : ComponentActivity() {
 
     private var pendingAction: String? = null
     var onPinBlocked: (() -> Unit)? = null
+    var onResumeCallback: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -113,6 +116,11 @@ class MainActivity : ComponentActivity() {
                 MainScreen()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        onResumeCallback?.invoke()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -189,9 +197,29 @@ class MainActivity : ComponentActivity() {
         var showPinBlockedDialog by remember { mutableStateOf(false) }
         var showMiuiSmsPermissionDialog by remember { mutableStateOf(false) }
 
+        // Live Island states
+        var isIslandRunning by remember { mutableStateOf(LiveIslandService.isServiceRunning) }
+        var showIslandPermissionDialog by remember { mutableStateOf(false) }
+        var pendingIslandOrderNo by remember { mutableStateOf<String?>(null) }
+
         // Bind pin blocked callback
         onPinBlocked = {
             showPinBlockedDialog = true
+        }
+
+        // Bind onResume callback to automatically reactivate island after granting permission
+        val activity = context as? MainActivity
+        activity?.onResumeCallback = {
+            isIslandRunning = LiveIslandService.isServiceRunning
+            val pending = pendingIslandOrderNo
+            if (pending != null && IslandPermissionHelper.hasOverlayPermission(context)) {
+                pendingIslandOrderNo = null
+                LiveIslandService.start(context, pending)
+                isIslandRunning = true
+                scope.launch {
+                    snackbarHostState.showSnackbar("已开启灵动胶囊，实时显示发车倒计时与检票口")
+                }
+            }
         }
 
         // Update states
@@ -203,6 +231,30 @@ class MainActivity : ComponentActivity() {
         fun reloadTrips() {
             trips = db.getAllTrips()
             TripWidgetRenderer.updateAllWidgets(context)
+            if (LiveIslandService.isServiceRunning) {
+                LiveIslandService.update(context)
+            }
+        }
+
+        fun toggleIslandForTrip(orderNo: String) {
+            if (isIslandRunning && LiveIslandService.currentOrderNo == orderNo) {
+                LiveIslandService.stop(context)
+                isIslandRunning = false
+                scope.launch {
+                    snackbarHostState.showSnackbar("已关闭灵动胶囊")
+                }
+            } else {
+                if (!IslandPermissionHelper.hasOverlayPermission(context)) {
+                    pendingIslandOrderNo = orderNo
+                    showIslandPermissionDialog = true
+                } else {
+                    LiveIslandService.start(context, orderNo)
+                    isIslandRunning = true
+                    scope.launch {
+                        snackbarHostState.showSnackbar("已开启灵动胶囊，实时显示发车倒计时与检票口")
+                    }
+                }
+            }
         }
 
         fun updateTripGate(orderNo: String, newGate: String) {
@@ -535,6 +587,10 @@ class MainActivity : ComponentActivity() {
                                 )
                                 HeroTripCard(
                                     trip = upcomingTrips.first(),
+                                    isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == upcomingTrips.first().orderNo,
+                                    onToggleIsland = {
+                                        toggleIslandForTrip(upcomingTrips.first().orderNo)
+                                    },
                                     onArchive = {
                                         db.setArchived(upcomingTrips.first().orderNo, true)
                                         reloadTrips()
@@ -564,6 +620,10 @@ class MainActivity : ComponentActivity() {
                                 items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
                                     HeroTripCard(
                                         trip = trip,
+                                        isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == trip.orderNo,
+                                        onToggleIsland = {
+                                            toggleIslandForTrip(trip.orderNo)
+                                        },
                                         onArchive = {
                                             db.setArchived(trip.orderNo, true)
                                             reloadTrips()
@@ -614,6 +674,10 @@ class MainActivity : ComponentActivity() {
                             items(inTransitTrips, key = { it.orderNo }) { trip ->
                                 HeroTripCard(
                                     trip = trip,
+                                    isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == trip.orderNo,
+                                    onToggleIsland = {
+                                        toggleIslandForTrip(trip.orderNo)
+                                    },
                                     onArchive = {
                                         db.setArchived(trip.orderNo, true)
                                         reloadTrips()
@@ -874,6 +938,43 @@ class MainActivity : ComponentActivity() {
                 dismissButton = {
                     TextButton(onClick = { showPinBlockedDialog = false }) {
                         Text("知道了")
+                    }
+                }
+            )
+        }
+
+        // Live Island / Overlay Permission Dialog
+        if (showIslandPermissionDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showIslandPermissionDialog = false
+                    pendingIslandOrderNo = null
+                },
+                title = { Text("需要显示悬浮窗权限", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text(
+                        text = "桌面灵动胶囊 / 灵动岛效果需要在屏幕顶部（自动避让前摄挖孔）常驻展示实时发车倒计时与检票口。\n\n" +
+                                "对于 MIUI 14 / HyperOS 等设备：\n" +
+                                "1. 点击下方按钮进入权限管理；\n" +
+                                "2. 找到「显示悬浮窗」权限并选择【始终允许】；\n" +
+                                "3. 返回应用后将自动开启实时灵动岛。",
+                        lineHeight = 22.sp
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        showIslandPermissionDialog = false
+                        IslandPermissionHelper.openOverlaySettings(context)
+                    }) {
+                        Text("前往开启权限")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showIslandPermissionDialog = false
+                        pendingIslandOrderNo = null
+                    }) {
+                        Text("暂不开启")
                     }
                 }
             )

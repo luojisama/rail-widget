@@ -66,6 +66,8 @@ fun HeroTripCard(
     onDelete: () -> Unit,
     onRefreshTimetable: (() -> Unit)? = null,
     onUpdateGate: ((String) -> Unit)? = null,
+    isIslandRunning: Boolean = false,
+    onToggleIsland: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val stage = trip.getStage()
@@ -515,6 +517,37 @@ fun HeroTripCard(
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                         )
+                    }
+                }
+
+                if (!isCompleted && onToggleIsland != null) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (isIslandRunning) Color(0xFF0F172A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        border = if (isIslandRunning) BorderStroke(1.dp, Color(0xFF38BDF8)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        modifier = Modifier.clickable { onToggleIsland() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        ) {
+                            Text(
+                                text = if (isIslandRunning) "胶囊运行中" else "开启灵动岛",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isIslandRunning) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (isIslandRunning) {
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981))
+                                )
+                            }
+                        }
                     }
                 }
 
