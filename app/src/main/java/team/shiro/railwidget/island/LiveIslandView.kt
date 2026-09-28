@@ -73,9 +73,9 @@ class LiveIslandView(private val context: Context) {
         val dp = context.resources.displayMetrics.density
         statusBarHeight = getStatusBarHeight(context)
 
-        // 默认高度设为 56dp（上层贴合前摄，下层自然向下延展至状态栏下方）
-        capsuleTopY = (statusBarHeight * 0.12f).toInt().coerceAtLeast((2 * dp).toInt())
-        capsuleHeight = (56 * dp).toInt()
+        // 默认高度扩充至 64dp（上层包裹前摄，下层自然向下延展至状态栏下方，两行文字呼吸充裕不切边）
+        capsuleTopY = (statusBarHeight * 0.10f).toInt().coerceAtLeast((2 * dp).toInt())
+        capsuleHeight = (64 * dp).toInt()
 
         windowParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -130,22 +130,25 @@ class LiveIslandView(private val context: Context) {
             }
         }
 
-        // 3. 灵动岛核心卡片容器（纯黑背景与物理摄像头一体化，圆润饱满药丸形）
+        // 3. 灵动岛核心卡片容器（纯黑背景与物理摄像头一体化，圆润饱满的跑道水滴胶囊）
         val islandBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = 20 * dp
+            cornerRadius = capsuleHeight / 2f
             setColor(Color.BLACK) // 纯黑以使前摄镜头完美融为一体
-            setStroke((1 * dp).toInt(), Color.parseColor("#262626")) // 微光质感边框
+            // 0.8dp 精细微光反光边缘，消除黑框生硬感，在浅色/深色壁纸下通透精致
+            setStroke((0.8f * dp).toInt().coerceAtLeast(1), Color.parseColor("#33FFFFFF"))
         }
         islandCard.background = islandBg
-        islandCard.elevation = 16 * dp
+        // 折叠态设为 0dp elevation，杜绝悬浮窗口边界硬切阴影导致的外层方形灰框
+        islandCard.elevation = 0f
 
         // ==========================================
         // 4. 构建折叠态布局 (Compact Island: 上层包裹前摄，下层下沉延伸展示核心消息)
         // ==========================================
         compactLayout.orientation = LinearLayout.VERTICAL
         compactLayout.gravity = Gravity.CENTER_HORIZONTAL
-        compactLayout.setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
+        // 左右扩大至 16dp 避让两端跑道圆角弧度，上下加足 7dp/8dp 呼吸留白，文字笔画完整不截断
+        compactLayout.setPadding((16 * dp).toInt(), (7 * dp).toInt(), (16 * dp).toInt(), (8 * dp).toInt())
 
         // 4.1 顶部行 (前摄包裹行：左翼车次 + 中置绝对安全避让 + 右翼车型，两翼 weight=1f 确保中置避让 100% 居中)
         compactTopRow.orientation = LinearLayout.HORIZONTAL
@@ -207,7 +210,7 @@ class LiveIslandView(private val context: Context) {
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = (3 * dp).toInt()
+            topMargin = (4 * dp).toInt()
         }
         compactBottomRow.layoutParams = bottomRowLp
 
@@ -218,15 +221,15 @@ class LiveIslandView(private val context: Context) {
         tvCompactMessage.ellipsize = android.text.TextUtils.TruncateAt.END
         compactBottomRow.addView(tvCompactMessage)
 
-        // 精简检票口药丸
+        // 精简检票口药丸 (圆润饱满朱红微胶囊)
         val gateBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = 5 * dp
-            setColor(Color.parseColor("#DC2626"))
+            cornerRadius = 4.5f * dp
+            setColor(Color.parseColor("#E11D48"))
         }
         tvCompactGate.background = gateBg
         tvCompactGate.setTextColor(Color.WHITE)
-        tvCompactGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+        tvCompactGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
         tvCompactGate.setTypeface(null, android.graphics.Typeface.BOLD)
         tvCompactGate.setPadding((5 * dp).toInt(), (1.5f * dp).toInt(), (5 * dp).toInt(), (1.5f * dp).toInt())
         val gateParams = LinearLayout.LayoutParams(
@@ -407,23 +410,24 @@ class LiveIslandView(private val context: Context) {
 
             // 胶囊垂直 Y 轴：从前摄顶部往上留 2dp 贴合包裹（刚好比通知栏文字稍高一点，绝不顶死屏幕顶端）
             capsuleTopY = (cutout.top - (2 * dp).toInt()).coerceAtLeast(0)
-            // 高度：前摄包裹行 + 下方下沉延展行，确保核心消息完全落在状态栏下方黄金安全区
-            val minTouchHeight = (56 * dp).toInt()
-            val minCutoutHeight = holeHeight + (34 * dp).toInt()
-            capsuleHeight = kotlin.math.max(minTouchHeight, minCutoutHeight)
+            // 高度：前摄包裹行 + 下方下沉延展行，确保核心消息完全落在状态栏下方黄金安全区，预留充裕呼吸空间
+            val minBaseHeight = (64 * dp).toInt()
+            val minCutoutHeight = holeHeight + (42 * dp).toInt()
+            capsuleHeight = kotlin.math.max(minBaseHeight, minCutoutHeight)
 
             // 中间留白：正好等于前摄孔径 + 14dp 安全余量，两翼对称完全避让
             val spacerWidth = holeWidth + (14 * dp).toInt()
             spacerCameraHole.layoutParams = LinearLayout.LayoutParams(spacerWidth, 1)
         } else {
-            // 兜底（左打孔或无挖孔机型）：高度设为 56dp，距离顶部约 4dp
-            capsuleTopY = (statusBarHeight * 0.12f).toInt().coerceAtLeast((2 * dp).toInt())
-            capsuleHeight = (56 * dp).toInt()
+            // 兜底（左打孔或无挖孔机型）：高度设为 64dp，距离顶部约 3dp
+            capsuleTopY = (statusBarHeight * 0.10f).toInt().coerceAtLeast((2 * dp).toInt())
+            capsuleHeight = (64 * dp).toInt()
             spacerCameraHole.layoutParams = LinearLayout.LayoutParams((24 * dp).toInt(), 1)
         }
 
-        val cornerRadius = 20 * dp
+        val cornerRadius = capsuleHeight / 2f
         (islandCard.background as? GradientDrawable)?.cornerRadius = cornerRadius
+        islandCard.elevation = 0f
 
         if (!isExpanded) {
             windowParams.y = capsuleTopY
@@ -536,9 +540,12 @@ class LiveIslandView(private val context: Context) {
         expandedLayout.visibility = View.VISIBLE
         expandedLayout.alpha = 0f
 
+        // 展开态大卡启用阴影（全屏窗口不会截断阴影边缘）
+        islandCard.elevation = 16 * dp
+
         val targetWidth = (340 * dp).toInt()
         val targetRadius = 24 * dp
-        val initialRadius = 20 * dp
+        val initialRadius = capsuleHeight / 2f
 
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 260
@@ -564,6 +571,9 @@ class LiveIslandView(private val context: Context) {
 
         val dp = context.resources.displayMetrics.density
 
+        // 收起回折叠态：关闭 elevation，消除外层方形阴影截断黑框
+        islandCard.elevation = 0f
+
         expandedLayout.visibility = View.GONE
         compactLayout.visibility = View.VISIBLE
         compactLayout.alpha = 0f
@@ -575,7 +585,7 @@ class LiveIslandView(private val context: Context) {
         cardLp.height = capsuleHeight
         islandCard.layoutParams = cardLp
 
-        (islandCard.background as? GradientDrawable)?.cornerRadius = 20 * dp
+        (islandCard.background as? GradientDrawable)?.cornerRadius = capsuleHeight / 2f
 
         // 恢复紧凑型 WindowParams，恢复前摄精确 Y 坐标，允许外部触摸穿透
         windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT
