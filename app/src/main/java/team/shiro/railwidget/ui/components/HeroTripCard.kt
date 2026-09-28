@@ -78,6 +78,8 @@ fun HeroTripCard(
     onRefreshTimetable: (() -> Unit)? = null,
     onUpdateGate: ((String) -> Unit)? = null,
     isIslandRunning: Boolean = false,
+    isAutoLaunchActive: Boolean = false,
+    autoLeadText: String = "",
     onToggleIsland: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -187,20 +189,39 @@ fun HeroTripCard(
                 // 灵动岛快捷胶囊开关 (右上角醒目位置，带 Material 3 平滑状态色彩过渡)
                 if (onToggleIsland != null) {
                     val islandBtnBg by animateColorAsState(
-                        targetValue = if (isIslandRunning) Color(0xFFFEF2F2) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        targetValue = when {
+                            isIslandRunning -> Color(0xFFFEF2F2)
+                            isAutoLaunchActive -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                        },
                         animationSpec = tween(durationMillis = 200),
                         label = "islandBtnBg"
                     )
                     val islandBtnBorder by animateColorAsState(
-                        targetValue = if (isIslandRunning) Color(0xFFFCA5A5) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+                        targetValue = when {
+                            isIslandRunning -> Color(0xFFFCA5A5)
+                            isAutoLaunchActive -> MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                            else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                        },
                         animationSpec = tween(durationMillis = 200),
                         label = "islandBtnBorder"
                     )
                     val islandBtnText by animateColorAsState(
-                        targetValue = if (isIslandRunning) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        targetValue = when {
+                            isIslandRunning -> Color(0xFFDC2626)
+                            isAutoLaunchActive -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                         animationSpec = tween(durationMillis = 200),
                         label = "islandBtnText"
                     )
+
+                    val btnLabel = when {
+                        isIslandRunning -> "关闭胶囊"
+                        isAutoLaunchActive && autoLeadText.isNotBlank() -> "⚡ 自动拉起 ($autoLeadText)"
+                        isAutoLaunchActive -> "⚡ 自动拉起"
+                        else -> "灵动岛"
+                    }
 
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -215,7 +236,7 @@ fun HeroTripCard(
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = if (isIslandRunning) "关闭胶囊" else "灵动岛",
+                                text = btnLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = islandBtnText

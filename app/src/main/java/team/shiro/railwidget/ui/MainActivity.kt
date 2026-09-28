@@ -75,6 +75,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -106,6 +107,7 @@ import team.shiro.railwidget.ui.components.UpdateDialog
 import team.shiro.railwidget.ui.theme.RailWidgetTheme
 import team.shiro.railwidget.island.IslandPermissionHelper
 import team.shiro.railwidget.island.LiveIslandService
+import team.shiro.railwidget.island.LiveIslandScheduler
 import team.shiro.railwidget.widget.TripWidget2x2Receiver
 import team.shiro.railwidget.widget.TripWidget4x2Receiver
 import team.shiro.railwidget.widget.TripWidget4x4Receiver
@@ -250,6 +252,18 @@ class MainActivity : ComponentActivity() {
             TripWidgetRenderer.updateAllWidgets(context)
             if (LiveIslandService.isServiceRunning) {
                 LiveIslandService.update(context)
+            }
+            LiveIslandScheduler.scheduleAutoLaunch(context)
+        }
+
+        var isAutoLaunchOn by remember { mutableStateOf(LiveIslandScheduler.isAutoLaunchEnabled(context)) }
+        var leadMinutes by remember { mutableLongStateOf(LiveIslandScheduler.getAutoLeadMinutes(context)) }
+        val leadText = remember(leadMinutes) {
+            when (leadMinutes) {
+                0L -> "当天0点"
+                60L -> "提前1h"
+                120L -> "提前2h"
+                else -> "提前${leadMinutes}m"
             }
         }
 
@@ -662,6 +676,8 @@ class MainActivity : ComponentActivity() {
                                     HeroTripCard(
                                         trip = upcomingTrips.first(),
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == upcomingTrips.first().orderNo,
+                                        isAutoLaunchActive = isAutoLaunchOn,
+                                        autoLeadText = leadText,
                                         onToggleIsland = {
                                             toggleIslandForTrip(upcomingTrips.first().orderNo)
                                         },
@@ -692,9 +708,12 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                     items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
+                                        val isNextTransfer = db.findPreviousTransferTrip(trip) != null
                                         HeroTripCard(
                                             trip = trip,
                                             isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
+                                            isAutoLaunchActive = isAutoLaunchOn && isNextTransfer && LiveIslandScheduler.isTransferHandoverEnabled(context),
+                                            autoLeadText = if (isNextTransfer) "换乘接力" else "",
                                             onToggleIsland = {
                                                 toggleIslandForTrip(trip.orderNo)
                                             },
@@ -923,8 +942,13 @@ class MainActivity : ComponentActivity() {
                 initialImapUser = db.getSetting("imap_user", ""),
                 initialImapPass = db.getSetting("imap_pass", ""),
                 initialImapSsl = db.getSetting("imap_ssl", "true") == "true",
+                initialIslandAutoLaunch = LiveIslandScheduler.isAutoLaunchEnabled(context),
+                initialIslandLeadMinutes = LiveIslandScheduler.getAutoLeadMinutes(context),
+                initialIslandTransferHandover = LiveIslandScheduler.isTransferHandoverEnabled(context),
+                initialIslandAutoClose = LiveIslandScheduler.isAutoCloseOnArrivalEnabled(context),
                 onDismiss = { showSettingsDialog = false },
-                onSaveAndSync = { mode, cloudUrl, cloudUser, cloudPass, imapHost, imapPort, imapUser, imapPass, imapSsl ->
+                onSaveSettings = { mode, cloudUrl, cloudUser, cloudPass, imapHost, imapPort, imapUser, imapPass, imapSsl,
+                                  islandAutoLaunch, islandLeadMinutes, islandTransferHandover, islandAutoClose ->
                     showSettingsDialog = false
                     db.setSetting("cloudmail_url", cloudUrl)
                     db.setSetting("cloudmail_user", cloudUser)
@@ -935,23 +959,30 @@ class MainActivity : ComponentActivity() {
                     db.setSetting("imap_pass", imapPass)
                     db.setSetting("imap_ssl", imapSsl.toString())
 
-                    scope.launch {
-                        isSyncingMail = true
-                        val res = withContext(Dispatchers.IO) {
-                            if (mode == 0) {
-                                CloudMailClient.sync(cloudUrl, cloudUser, cloudPass, db)
-                            } else {
-                                val portInt = imapPort.toIntOrNull() ?: 993
-                                StandardImapClient.sync(imapHost, portInt, imapUser, imapPass, imapSsl, db)
-                            }
-                        }
-                        isSyncingMail = false
-                        reloadTrips()
+                    db.setSetting(LiveIslandScheduler.KEY_AUTO_LAUNCH_ENABLED, if (islandAutoLaunch) "1" else "0")
+                    db.setSetting(LiveIslandScheduler.KEY_AUTO_LEAD_MINUTES, islandLeadMinutes.toString())
+                    db.setSetting(LiveIslandScheduler.KEY_AUTO_TRANSFER_HANDOVER, if (islandTransferHandover) "1" else "0")
+                    db.setSetting(LiveIslandScheduler.KEY_AUTO_CLOSE_ON_ARRIVAL, if (islandAutoClose) "1" else "0")
 
-                        if (res.isSuccess) {
-                            snackbarHostState.showSnackbar("同步成功！已获取 ${res.getOrNull()?.size ?: 0} 条行程数据")
-                        } else {
-                            snackbarHostState.showSnackbar("同步失败: ${res.exceptionOrNull()?.message}")
+                    isAutoLaunchOn = islandAutoLaunch
+                    leadMinutes = islandLeadMinutes
+                    LiveIslandScheduler.scheduleAutoLaunch(context)
+
+                    scope.launch {
+                        snackbarHostState.showSnackbar("设置已保存，灵动岛智能调度已更新")
+                        if ((mode == 0 && cloudUrl.isNotBlank() && cloudUser.isNotBlank() && cloudPass.isNotBlank()) ||
+                            (mode == 1 && imapHost.isNotBlank() && imapUser.isNotBlank() && imapPass.isNotBlank())) {
+                            isSyncingMail = true
+                            withContext(Dispatchers.IO) {
+                                if (mode == 0) {
+                                    CloudMailClient.sync(cloudUrl, cloudUser, cloudPass, db)
+                                } else {
+                                    val portInt = imapPort.toIntOrNull() ?: 993
+                                    StandardImapClient.sync(imapHost, portInt, imapUser, imapPass, imapSsl, db)
+                                }
+                            }
+                            isSyncingMail = false
+                            reloadTrips()
                         }
                     }
                 }

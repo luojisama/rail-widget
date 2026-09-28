@@ -168,6 +168,44 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         return null
     }
 
+    /**
+     * 智能识别当前车次的后续中转换乘车次（联程车票）
+     * 判定准则：
+     * 1. 车站对齐：下一程出发站与当前到达站一致（消除“站”字模糊匹配，如“南京南”与“南京南站”）
+     * 2. 时序合理：下一程发车时间在当前到达时间之后，且换乘窗口在 10 分钟 ~ 8 小时之内
+     * 3. 取发车时间最近的一趟
+     */
+    fun findNextTransferTrip(trip: Trip): Trip? {
+        val allTrips = getAllTrips().filter { !it.isArchived && it.orderNo != trip.orderNo }
+        val currentArrStationClean = trip.arrivalStation.replace("站", "").trim()
+        val currentArrMillis = trip.getArrivalTimeMillis()
+
+        return allTrips.filter { candidate ->
+            val candidateDepStationClean = candidate.departureStation.replace("站", "").trim()
+            val candidateDepMillis = candidate.getDepartureTimeMillis()
+            val timeDiff = candidateDepMillis - currentArrMillis
+            candidateDepStationClean.equals(currentArrStationClean, ignoreCase = true) &&
+                    timeDiff in (10 * 60 * 1000L)..(8 * 3600 * 1000L)
+        }.minByOrNull { it.getDepartureTimeMillis() }
+    }
+
+    /**
+     * 查询当前车次是否存在前序中转换乘车次（即当前车次作为第二程）
+     */
+    fun findPreviousTransferTrip(trip: Trip): Trip? {
+        val allTrips = getAllTrips().filter { !it.isArchived && it.orderNo != trip.orderNo }
+        val currentDepStationClean = trip.departureStation.replace("站", "").trim()
+        val currentDepMillis = trip.getDepartureTimeMillis()
+
+        return allTrips.filter { prev ->
+            val prevArrStationClean = prev.arrivalStation.replace("站", "").trim()
+            val prevArrMillis = prev.getArrivalTimeMillis()
+            val diff = currentDepMillis - prevArrMillis
+            prevArrStationClean.equals(currentDepStationClean, ignoreCase = true) &&
+                    diff in (10 * 60 * 1000L)..(8 * 3600 * 1000L)
+        }.maxByOrNull { it.getArrivalTimeMillis() }
+    }
+
     fun deleteTrip(orderNo: String) {
         writableDatabase.delete(TABLE_TRIPS, "order_no = ?", arrayOf(orderNo))
     }

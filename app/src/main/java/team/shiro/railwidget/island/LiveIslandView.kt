@@ -448,10 +448,15 @@ class LiveIslandView(private val context: Context) {
 
         // 3. 更新展开态
         val category = getTrainCategory(trip.trainCode)
-        tvExpandedTitle.text = "${trip.trainCode} · $category"
+        val prevTransfer = team.shiro.railwidget.data.local.TripDatabaseHelper.getInstance(context).findPreviousTransferTrip(trip)
+        val transferTag = if (prevTransfer != null) {
+            val waitM = ((trip.getDepartureTimeMillis() - prevTransfer.getArrivalTimeMillis()) / 60000).coerceAtLeast(0)
+            " · 换乘候车${waitM}m"
+        } else ""
+        tvExpandedTitle.text = "${trip.trainCode} · $category$transferTag"
 
         val statusText = when {
-            stage == TripStage.COMPLETED -> "已结束"
+            stage == TripStage.COMPLETED -> "已到达"
             stage == TripStage.IN_TRANSIT -> "运行中"
             else -> trip.computeStatus()
         }
@@ -460,6 +465,7 @@ class LiveIslandView(private val context: Context) {
             "正在检票" -> Pair(Color.parseColor("#EF4444"), Color.parseColor("#450A0A"))
             "停止检票" -> Pair(Color.parseColor("#F97316"), Color.parseColor("#431407"))
             "运行中" -> Pair(Color.parseColor("#10B981"), Color.parseColor("#064E3B"))
+            "已到达" -> Pair(Color.parseColor("#34D399"), Color.parseColor("#064E3B"))
             else -> Pair(Color.parseColor("#38BDF8"), Color.parseColor("#082F49"))
         }
         tvExpandedStatus.setTextColor(stColor)
@@ -467,7 +473,8 @@ class LiveIslandView(private val context: Context) {
 
         tvExpandedRoute.text = "${trip.departureStation}  ➔  ${trip.arrivalStation}"
         val arrTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--"
-        tvExpandedTimes.text = "发车 $depTime  ·  到达 $arrTime"
+        val closeNotice = if (stage == TripStage.COMPLETED) " · 15m后自动关闭" else ""
+        tvExpandedTimes.text = "发车 $depTime  ·  到达 $arrTime$closeNotice"
 
         val seatStr = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
             val tTag = if (trip.ticketType == "列车补票") " · 补票" else ""

@@ -24,8 +24,8 @@ data class Trip(
     val departureDate: String, // YYYY-MM-DD
     val departureTime: String, // HH:mm
     val arrivalTime: String = "", // HH:mm
-    val carriage: String, // e.g. "6车" or "06车"
-    val seat: String, // e.g. "1D号"
+    val carriage: String = "", // e.g. "6车" or "06车"
+    val seat: String = "", // e.g. "1D号"
     val seatType: String = "二等座",
     val ticketGate: String = "", // e.g. "16A"
     val ticketType: String = "成人票",
@@ -91,6 +91,9 @@ data class Trip(
             Pair(System.currentTimeMillis(), System.currentTimeMillis() + 2 * 3600 * 1000)
         }
     }
+
+    fun getDepartureTimeMillis(): Long = calculateTimes().first
+    fun getArrivalTimeMillis(): Long = calculateTimes().second
 
     fun getCleanTicketGate(): String {
         if (ticketGate.isBlank()) return "暂无"

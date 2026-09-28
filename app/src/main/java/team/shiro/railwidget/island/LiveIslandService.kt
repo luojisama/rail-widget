@@ -153,11 +153,58 @@ class LiveIslandService : Service() {
             return
         }
 
-        // 2. 行程已结束
+        // 2. 行程到达与中转换乘智能接力 / 自动安全关闭
         val stage = trip.getStage(nowCal.timeInMillis)
         if (stage == TripStage.COMPLETED) {
-            handler.postDelayed(tickerRunnable, 5 * 60 * 1000L)
-            return
+            val db = TripDatabaseHelper.getInstance(this)
+            val isTransferEnabled = LiveIslandScheduler.isTransferHandoverEnabled(this)
+            val nextTransfer = if (isTransferEnabled) db.findNextTransferTrip(trip) else null
+
+            if (nextTransfer != null) {
+                // 智能中转换乘接力：不关闭灵动岛，平滑无缝切换至下一程！
+                currentTrip = nextTransfer
+                currentOrderNo = nextTransfer.orderNo
+                islandView?.updateTrip(nextTransfer)
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(NOTIFICATION_ID, buildForegroundNotification(nextTransfer))
+
+                // 同步广播通知桌面小组件局部更新
+                val widgetIntent = Intent("team.shiro.railwidget.action.REFRESH_WIDGET").apply {
+                    setPackage(packageName)
+                }
+                sendBroadcast(widgetIntent)
+
+                // 若第二程尚未获取到检票口，立即触发异步探测
+                if (nextTransfer.getCleanTicketGate().isBlank() || nextTransfer.getCleanTicketGate() == "暂无") {
+                    checkAndFetchTicketGateAsync(nextTransfer)
+                }
+
+                // 立即按第二程发车时间开始下一阶段调度
+                scheduleNextCheck(nextTransfer)
+                return
+            }
+
+            // 无中转换乘行程：检查是否开启到站后自动关闭
+            val isAutoCloseEnabled = LiveIslandScheduler.isAutoCloseOnArrivalEnabled(this)
+            if (isAutoCloseEnabled) {
+                val arrMillis = trip.getArrivalTimeMillis()
+                val elapsedSinceArrival = nowCal.timeInMillis - arrMillis
+                val bufferMillis = 15 * 60 * 1000L // 15 分钟出站缓冲时间
+                if (elapsedSinceArrival >= bufferMillis) {
+                    // 已超过 15 分钟缓冲，安全退出悬浮窗与前台服务
+                    stopSelf()
+                    return
+                } else {
+                    // 尚未满 15 分钟，在剩余时间到期后触发退出
+                    val remaining = (bufferMillis - elapsedSinceArrival).coerceAtLeast(5000L)
+                    handler.postDelayed(tickerRunnable, remaining)
+                    return
+                }
+            } else {
+                // 用户关闭了到站自动关闭：以 5 分钟低频维持已到达状态
+                handler.postDelayed(tickerRunnable, 5 * 60 * 1000L)
+                return
+            }
         }
 
         // 3. 发车日当天：检查并拉取 12306 大屏检票口
