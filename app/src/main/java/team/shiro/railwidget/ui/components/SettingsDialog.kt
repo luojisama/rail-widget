@@ -126,15 +126,15 @@ fun SettingsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
                                 text = "发车前自动拉起灵动岛",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                text = "临近出发时自动在屏幕顶端弹出实时胶囊",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "临近发车时在屏幕顶端弹出实时胶囊",
+                                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -188,15 +188,15 @@ fun SettingsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
                                 text = "智能中转换乘接力",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                text = "到达第一程终点后不关闭，自动接力切换至第二程换乘车次并显示新检票口",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "第一程到站后不关闭，平滑接力下一程车次并更新检票口",
+                                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
@@ -213,15 +213,15 @@ fun SettingsDialog(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
                                 text = "到站后自动安全关闭",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                text = "单程车次到达终点站后，留出 15 分钟出站缓冲时间，随后自动安全退出",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "单程到站后留出 15 分钟出站缓冲，随后自动安全退出",
+                                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }

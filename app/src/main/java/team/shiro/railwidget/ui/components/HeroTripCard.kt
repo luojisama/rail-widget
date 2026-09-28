@@ -166,7 +166,8 @@ fun HeroTripCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFF94A3B8),
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                         if (trip.ticketType.isNotBlank() && trip.ticketType != "成人票") {
                             Spacer(modifier = Modifier.width(6.dp))
@@ -179,15 +180,17 @@ fun HeroTripCard(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (trip.ticketType.contains("补票")) Color(0xFFD97706) else Color(0xFF2563EB),
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
                     }
                 }
 
-                // 灵动岛快捷胶囊开关 (右上角醒目位置，带 Material 3 平滑状态色彩过渡)
-                if (onToggleIsland != null) {
+                // 灵动岛快捷胶囊开关 (仅在非已结束行程且有开关回调时展示，避免挤压顶栏)
+                if (!isCompleted && onToggleIsland != null) {
                     val islandBtnBg by animateColorAsState(
                         targetValue = when {
                             isIslandRunning -> Color(0xFFFEF2F2)
@@ -239,7 +242,9 @@ fun HeroTripCard(
                                 text = btnLabel,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = islandBtnText
+                                color = islandBtnText,
+                                maxLines = 1,
+                                softWrap = false
                             )
                             if (isIslandRunning) {
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -298,9 +303,10 @@ fun HeroTripCard(
                     val depDisplay = if (trip.departureTime.isNotBlank() && trip.departureTime != "00:00") trip.departureTime else "--:--"
                     Text(
                         text = depDisplay,
-                        fontSize = 32.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false,
                         color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface
                     )
                     Text(
@@ -315,7 +321,7 @@ fun HeroTripCard(
 
                 // 中间运行图示与历时
                 Column(
-                    modifier = Modifier.padding(horizontal = 8.dp),
+                    modifier = Modifier.padding(horizontal = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     val durationText = calculateDuration(trip.departureTime, trip.arrivalTime)
@@ -324,7 +330,9 @@ fun HeroTripCard(
                             text = durationText,
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFF64748B)
+                            color = Color(0xFF64748B),
+                            maxLines = 1,
+                            softWrap = false
                         )
                     }
 
@@ -341,7 +349,7 @@ fun HeroTripCard(
                         )
                         Box(
                             modifier = Modifier
-                                .width(56.dp)
+                                .width(40.dp)
                                 .height(2.dp)
                                 .background(Color(0xFFCBD5E1))
                         )
@@ -357,7 +365,9 @@ fun HeroTripCard(
                     Text(
                         text = stopsCount,
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF94A3B8)
+                        color = Color(0xFF94A3B8),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -369,9 +379,10 @@ fun HeroTripCard(
                     val arrTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--"
                     Text(
                         text = arrTime,
-                        fontSize = 32.sp,
+                        fontSize = 28.sp,
                         fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        softWrap = false,
                         color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface
                     )
                     Text(

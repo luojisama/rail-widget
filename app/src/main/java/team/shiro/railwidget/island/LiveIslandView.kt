@@ -196,12 +196,17 @@ class LiveIslandView(private val context: Context) {
         rightWing.addView(tvCompactRight)
         compactLayout.addView(rightWing)
 
-        // 视觉胶囊固定置顶放置（高度 34dp），触控容器（高度 52dp）向下自然延伸出 18dp 的隐形完全透明热区
         val compactLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             visualCapsuleHeight
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        }
+        compactLayout.setOnClickListener {
+            if (!isExpanded) expand()
+        }
+        islandCard.setOnClickListener {
+            if (!isExpanded) expand()
         }
         islandCard.addView(compactLayout, compactLp)
 
