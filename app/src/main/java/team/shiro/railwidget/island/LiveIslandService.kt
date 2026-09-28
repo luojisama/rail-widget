@@ -91,6 +91,9 @@ class LiveIslandService : Service() {
         }
         currentTrip = trip
         currentOrderNo = trip?.orderNo
+
+        // 到发车日期自动异步获取最新检票口并缓存
+        trip?.let { checkAndFetchTicketGateAsync(it) }
     }
 
     private fun refreshTripState() {
@@ -104,6 +107,55 @@ class LiveIslandService : Service() {
         islandView?.updateTrip(refreshed)
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, buildForegroundNotification(refreshed))
+
+        // 定时轮询中，若无具体检票口且已到发车日期，自动后台获取并缓存
+        val gate = refreshed.getCleanTicketGate()
+        if (gate.isBlank() || gate == "暂无") {
+            checkAndFetchTicketGateAsync(refreshed)
+        }
+    }
+
+    @Volatile
+    private var isFetchingGate = false
+
+    /**
+     * 到发车日期自动异步拉取 12306 官方最新检票口并持久化缓存至数据库
+     */
+    private fun checkAndFetchTicketGateAsync(trip: Trip) {
+        if (isFetchingGate) return
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).format(java.util.Date())
+        // 当天或已到达发车日期
+        if (trip.departureDate.isNotBlank() && trip.departureDate <= today) {
+            isFetchingGate = true
+            Thread {
+                try {
+                    val enriched = team.shiro.railwidget.data.api.RailwayApiService.enrichTrip(trip)
+                    val newGate = enriched.getCleanTicketGate()
+                    if (newGate.isNotBlank() && newGate != "暂无" && newGate != trip.getCleanTicketGate()) {
+                        val db = TripDatabaseHelper.getInstance(this)
+                        db.insertOrUpdateTrip(enriched)
+                        handler.post {
+                            if (currentTrip?.orderNo == enriched.orderNo) {
+                                currentTrip = enriched
+                                islandView?.updateTrip(enriched)
+                                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                                nm.notify(NOTIFICATION_ID, buildForegroundNotification(enriched))
+
+                                // 同步广播通知桌面小组件局部更新
+                                val widgetIntent = Intent("team.shiro.railwidget.action.REFRESH_WIDGET").apply {
+                                    setPackage(packageName)
+                                }
+                                sendBroadcast(widgetIntent)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    isFetchingGate = false
+                }
+            }.start()
+        }
     }
 
     private fun buildForegroundNotification(trip: Trip): Notification {
