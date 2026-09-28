@@ -147,25 +147,56 @@ class LiveIslandView(private val context: Context) {
         compactLayout.gravity = Gravity.CENTER_HORIZONTAL
         compactLayout.setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
 
-        // 4.1 顶部行 (前摄包裹行：极简车次编号 + 物理打孔避让 + 车型次要标注，在通知栏区域极简呈现)
+        // 4.1 顶部行 (前摄包裹行：左翼车次 + 中置绝对安全避让 + 右翼车型，两翼 weight=1f 确保中置避让 100% 居中)
         compactTopRow.orientation = LinearLayout.HORIZONTAL
         compactTopRow.gravity = Gravity.CENTER_VERTICAL
+        val topRowLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        compactTopRow.layoutParams = topRowLp
 
-        // 左翼：车次徽章
+        // 左翼容器 (weight = 1f，内容靠右停靠在前摄左边安全区)
+        val leftWing = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
         tvCompactTrain.setTextColor(Color.WHITE)
         tvCompactTrain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         tvCompactTrain.setTypeface(null, android.graphics.Typeface.BOLD)
-        compactTopRow.addView(tvCompactTrain)
+        val trainLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            rightMargin = (4 * dp).toInt()
+        }
+        tvCompactTrain.layoutParams = trainLp
+        leftWing.addView(tvCompactTrain)
+        compactTopRow.addView(leftWing)
 
-        // 中间：摄像头物理开孔避让留白（使物理镜头正好落在纯黑无字安全区）
-        val cameraHoleParams = LinearLayout.LayoutParams((22 * dp).toInt(), 1)
+        // 中间：摄像头物理开孔避让留白（通过两翼等宽权重，绝对锁定在卡片几何正中心）
+        val cameraHoleParams = LinearLayout.LayoutParams((24 * dp).toInt(), 1)
         spacerCameraHole.layoutParams = cameraHoleParams
         compactTopRow.addView(spacerCameraHole)
 
-        // 右翼：车型次要标注 (如 城际动车 / 高速动车 / 动车组)
+        // 右翼容器 (weight = 1f，内容靠左停靠在前摄右边安全区)
+        val rightWing = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
         tvCompactCategory.setTextColor(Color.parseColor("#94A3B8"))
         tvCompactCategory.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-        compactTopRow.addView(tvCompactCategory)
+        val catLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            leftMargin = (4 * dp).toInt()
+        }
+        tvCompactCategory.layoutParams = catLp
+        rightWing.addView(tvCompactCategory)
+        compactTopRow.addView(rightWing)
 
         compactLayout.addView(compactTopRow)
 
@@ -381,14 +412,14 @@ class LiveIslandView(private val context: Context) {
             val minCutoutHeight = holeHeight + (34 * dp).toInt()
             capsuleHeight = kotlin.math.max(minTouchHeight, minCutoutHeight)
 
-            // 中间留白：正好等于前摄孔径 + 10dp 安全余量
-            val spacerWidth = holeWidth + (10 * dp).toInt()
+            // 中间留白：正好等于前摄孔径 + 14dp 安全余量，两翼对称完全避让
+            val spacerWidth = holeWidth + (14 * dp).toInt()
             spacerCameraHole.layoutParams = LinearLayout.LayoutParams(spacerWidth, 1)
         } else {
             // 兜底（左打孔或无挖孔机型）：高度设为 56dp，距离顶部约 4dp
             capsuleTopY = (statusBarHeight * 0.12f).toInt().coerceAtLeast((2 * dp).toInt())
             capsuleHeight = (56 * dp).toInt()
-            spacerCameraHole.layoutParams = LinearLayout.LayoutParams((16 * dp).toInt(), 1)
+            spacerCameraHole.layoutParams = LinearLayout.LayoutParams((24 * dp).toInt(), 1)
         }
 
         val cornerRadius = 20 * dp
@@ -620,15 +651,15 @@ class LiveIslandView(private val context: Context) {
 
     private fun getTrainCategory(trainCode: String): String {
         return when (trainCode.firstOrNull()?.uppercaseChar()) {
-            'G' -> "高速动车"
-            'D' -> "动车组"
-            'C' -> "城际动车"
-            'Z' -> "直达特快"
-            'T' -> "特快列车"
-            'K' -> "快速列车"
-            'Y' -> "旅游专列"
-            'S' -> "市域快铁"
-            else -> "铁路列车"
+            'G' -> "高铁"
+            'D' -> "动车"
+            'C' -> "城际"
+            'Z' -> "直快"
+            'T' -> "特快"
+            'K' -> "快速"
+            'Y' -> "旅游"
+            'S' -> "市域"
+            else -> "列车"
         }
     }
 
