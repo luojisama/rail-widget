@@ -73,9 +73,9 @@ class LiveIslandView(private val context: Context) {
         val dp = context.resources.displayMetrics.density
         statusBarHeight = getStatusBarHeight(context)
 
-        // 默认高度扩充至 64dp（上层包裹前摄，下层自然向下延展至状态栏下方，两行文字呼吸充裕不切边）
-        capsuleTopY = (statusBarHeight * 0.10f).toInt().coerceAtLeast((2 * dp).toInt())
-        capsuleHeight = (64 * dp).toInt()
+        // 默认高度设为精致小巧的 46dp（上层紧凑包裹前摄，下层下沉延展，两行文字紧密精致）
+        capsuleTopY = (statusBarHeight * 0.08f).toInt().coerceAtLeast((2 * dp).toInt())
+        capsuleHeight = (46 * dp).toInt()
 
         windowParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -130,7 +130,7 @@ class LiveIslandView(private val context: Context) {
             }
         }
 
-        // 3. 灵动岛核心卡片容器（纯黑背景与物理摄像头一体化，圆润饱满的跑道水滴胶囊）
+        // 3. 灵动岛核心卡片容器（纯黑背景与物理摄像头一体化，圆润饱满的小巧跑道水滴胶囊）
         val islandBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = capsuleHeight / 2f
@@ -147,8 +147,8 @@ class LiveIslandView(private val context: Context) {
         // ==========================================
         compactLayout.orientation = LinearLayout.VERTICAL
         compactLayout.gravity = Gravity.CENTER_HORIZONTAL
-        // 左右扩大至 16dp 避让两端跑道圆角弧度，上下加足 7dp/8dp 呼吸留白，文字笔画完整不截断
-        compactLayout.setPadding((16 * dp).toInt(), (7 * dp).toInt(), (16 * dp).toInt(), (8 * dp).toInt())
+        // 紧凑内边距：左右 12dp，上下仅 3.5dp/4.5dp，杜绝臃肿厚重
+        compactLayout.setPadding((12 * dp).toInt(), (3.5f * dp).toInt(), (12 * dp).toInt(), (4.5f * dp).toInt())
 
         // 4.1 顶部行 (前摄包裹行：左翼车次 + 中置绝对安全避让 + 右翼车型，两翼 weight=1f 确保中置避让 100% 居中)
         compactTopRow.orientation = LinearLayout.HORIZONTAL
@@ -166,20 +166,21 @@ class LiveIslandView(private val context: Context) {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         tvCompactTrain.setTextColor(Color.WHITE)
-        tvCompactTrain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        tvCompactTrain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
         tvCompactTrain.setTypeface(null, android.graphics.Typeface.BOLD)
+        tvCompactTrain.includeFontPadding = false
         val trainLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            rightMargin = (4 * dp).toInt()
+            rightMargin = (2 * dp).toInt()
         }
         tvCompactTrain.layoutParams = trainLp
         leftWing.addView(tvCompactTrain)
         compactTopRow.addView(leftWing)
 
         // 中间：摄像头物理开孔避让留白（通过两翼等宽权重，绝对锁定在卡片几何正中心）
-        val cameraHoleParams = LinearLayout.LayoutParams((24 * dp).toInt(), 1)
+        val cameraHoleParams = LinearLayout.LayoutParams((18 * dp).toInt(), 1)
         spacerCameraHole.layoutParams = cameraHoleParams
         compactTopRow.addView(spacerCameraHole)
 
@@ -190,12 +191,13 @@ class LiveIslandView(private val context: Context) {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         tvCompactCategory.setTextColor(Color.parseColor("#94A3B8"))
-        tvCompactCategory.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        tvCompactCategory.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+        tvCompactCategory.includeFontPadding = false
         val catLp = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            leftMargin = (4 * dp).toInt()
+            leftMargin = (2 * dp).toInt()
         }
         tvCompactCategory.layoutParams = catLp
         rightWing.addView(tvCompactCategory)
@@ -210,13 +212,14 @@ class LiveIslandView(private val context: Context) {
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            topMargin = (4 * dp).toInt()
+            topMargin = (1.5f * dp).toInt() // 极小行距，紧凑精致
         }
         compactBottomRow.layoutParams = bottomRowLp
 
         // 核心动态消息：发到站 + 倒计时/运行状态
         tvCompactMessage.setTextColor(Color.parseColor("#F1F5F9"))
-        tvCompactMessage.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+        tvCompactMessage.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        tvCompactMessage.includeFontPadding = false
         tvCompactMessage.maxLines = 1
         tvCompactMessage.ellipsize = android.text.TextUtils.TruncateAt.END
         compactBottomRow.addView(tvCompactMessage)
@@ -224,19 +227,20 @@ class LiveIslandView(private val context: Context) {
         // 精简检票口药丸 (圆润饱满朱红微胶囊)
         val gateBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = 4.5f * dp
+            cornerRadius = 3.5f * dp
             setColor(Color.parseColor("#E11D48"))
         }
         tvCompactGate.background = gateBg
         tvCompactGate.setTextColor(Color.WHITE)
-        tvCompactGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+        tvCompactGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
         tvCompactGate.setTypeface(null, android.graphics.Typeface.BOLD)
-        tvCompactGate.setPadding((5 * dp).toInt(), (1.5f * dp).toInt(), (5 * dp).toInt(), (1.5f * dp).toInt())
+        tvCompactGate.includeFontPadding = false
+        tvCompactGate.setPadding((4 * dp).toInt(), (1 * dp).toInt(), (4 * dp).toInt(), (1 * dp).toInt())
         val gateParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
-            leftMargin = (6 * dp).toInt()
+            leftMargin = (4 * dp).toInt()
         }
         tvCompactGate.layoutParams = gateParams
         compactBottomRow.addView(tvCompactGate)
@@ -410,19 +414,19 @@ class LiveIslandView(private val context: Context) {
 
             // 胶囊垂直 Y 轴：从前摄顶部往上留 2dp 贴合包裹（刚好比通知栏文字稍高一点，绝不顶死屏幕顶端）
             capsuleTopY = (cutout.top - (2 * dp).toInt()).coerceAtLeast(0)
-            // 高度：前摄包裹行 + 下方下沉延展行，确保核心消息完全落在状态栏下方黄金安全区，预留充裕呼吸空间
-            val minBaseHeight = (64 * dp).toInt()
-            val minCutoutHeight = holeHeight + (42 * dp).toInt()
+            // 高度：前摄包裹行 + 下方紧凑下沉延展行，46dp 极其精致，告别厚重
+            val minBaseHeight = (46 * dp).toInt()
+            val minCutoutHeight = holeHeight + (26 * dp).toInt()
             capsuleHeight = kotlin.math.max(minBaseHeight, minCutoutHeight)
 
-            // 中间留白：正好等于前摄孔径 + 14dp 安全余量，两翼对称完全避让
-            val spacerWidth = holeWidth + (14 * dp).toInt()
+            // 中间留白：孔径 + 6dp 紧凑避让，文字紧密依附前摄两侧
+            val spacerWidth = holeWidth + (6 * dp).toInt()
             spacerCameraHole.layoutParams = LinearLayout.LayoutParams(spacerWidth, 1)
         } else {
-            // 兜底（左打孔或无挖孔机型）：高度设为 64dp，距离顶部约 3dp
-            capsuleTopY = (statusBarHeight * 0.10f).toInt().coerceAtLeast((2 * dp).toInt())
-            capsuleHeight = (64 * dp).toInt()
-            spacerCameraHole.layoutParams = LinearLayout.LayoutParams((24 * dp).toInt(), 1)
+            // 兜底（左打孔或无挖孔机型）：高度设为 46dp，距离顶部约 2dp
+            capsuleTopY = (statusBarHeight * 0.08f).toInt().coerceAtLeast((2 * dp).toInt())
+            capsuleHeight = (46 * dp).toInt()
+            spacerCameraHole.layoutParams = LinearLayout.LayoutParams((18 * dp).toInt(), 1)
         }
 
         val cornerRadius = capsuleHeight / 2f
