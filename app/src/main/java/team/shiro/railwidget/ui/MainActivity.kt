@@ -26,6 +26,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +58,7 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -576,6 +579,41 @@ class MainActivity : ComponentActivity() {
                                     onManualPaste = { showImportDialog = true }
                                 )
                             }
+                            if (completedTrips.isNotEmpty()) {
+                                item {
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 10.dp)
+                                            .clickable { selectedTabIndex = 2 }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(14.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("💡", fontSize = 20.sp)
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = "想体验灵动胶囊 / 灵动岛？",
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "点击可前往「已结束」标签页，在任意历史车票右上角点击「灵动岛」快速查看悬浮胶囊效果！",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         } else {
                             item {
                                 Text(
@@ -724,6 +762,10 @@ class MainActivity : ComponentActivity() {
                             items(completedTrips, key = { it.orderNo }) { trip ->
                                 HeroTripCard(
                                     trip = trip,
+                                    isIslandRunning = isIslandRunning && LiveIslandService.currentOrderNo == trip.orderNo,
+                                    onToggleIsland = {
+                                        toggleIslandForTrip(trip.orderNo)
+                                    },
                                     onArchive = {},
                                     onDelete = {
                                         db.deleteTrip(trip.orderNo)

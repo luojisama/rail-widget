@@ -100,13 +100,7 @@ class LiveIslandService : Service() {
         currentTrip = refreshed
         currentOrderNo = refreshed.orderNo
 
-        // 若行程已结束超过 1 小时，自动终止前台服务与悬浮窗，零耗电
         val stage = refreshed.getStage()
-        if (stage == TripStage.COMPLETED) {
-            stopSelf()
-            return
-        }
-
         islandView?.updateTrip(refreshed)
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID, buildForegroundNotification(refreshed))

@@ -168,6 +168,38 @@ fun HeroTripCard(
                     }
                 }
 
+                // 灵动岛快捷胶囊开关 (右上角醒目位置)
+                if (onToggleIsland != null) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isIslandRunning) Color(0xFF0F172A) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                        border = if (isIslandRunning) BorderStroke(1.dp, Color(0xFF38BDF8)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                        modifier = Modifier.clickable { onToggleIsland() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = if (isIslandRunning) "胶囊运行中" else "灵动岛",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isIslandRunning) Color(0xFF38BDF8) else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            if (isIslandRunning) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF10B981))
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+
                 // 状态指示药丸
                 val statusText = when {
                     isCompleted -> "已结束"
@@ -520,7 +552,7 @@ fun HeroTripCard(
                     }
                 }
 
-                if (!isCompleted && onToggleIsland != null) {
+                if (onToggleIsland != null) {
                     Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(8.dp),
