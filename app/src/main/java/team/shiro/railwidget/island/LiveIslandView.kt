@@ -39,11 +39,17 @@ class LiveIslandView(private val context: Context) {
     // 核心拦截卡片容器：独占消费一切手势，彻底杜绝下拉通知栏
     private val islandCard = IslandCardView(context)
 
-    // 折叠态布局 (Compact Island: 包裹前摄并左右翼展)
+    // 折叠态布局 (Compact Island: 上层包裹前摄，下层下沉延伸展示核心消息)
     private val compactLayout = LinearLayout(context)
+    // 1. 上层打孔避让行 (通知栏水平高度：极简车次徽标 + 前摄避让 + 车型次要标识)
+    private val compactTopRow = LinearLayout(context)
     private val tvCompactTrain = TextView(context)
     private val spacerCameraHole = View(context)
-    private val tvCompactTime = TextView(context)
+    private val tvCompactCategory = TextView(context)
+
+    // 2. 下层核心动态消息行 (完全延展于状态栏下方安全区：区间与倒计时/状态 + 检票口药丸)
+    private val compactBottomRow = LinearLayout(context)
+    private val tvCompactMessage = TextView(context)
     private val tvCompactGate = TextView(context)
 
     // 展开态布局 (Expanded Island: 登车牌大卡)
@@ -67,9 +73,9 @@ class LiveIslandView(private val context: Context) {
         val dp = context.resources.displayMetrics.density
         statusBarHeight = getStatusBarHeight(context)
 
-        // 默认高度拉高至 48dp（大幅向下延展跨过通知栏下沿，保障 100% 触控面积）
+        // 默认高度设为 56dp（上层贴合前摄，下层自然向下延展至状态栏下方）
         capsuleTopY = (statusBarHeight * 0.12f).toInt().coerceAtLeast((2 * dp).toInt())
-        capsuleHeight = (48 * dp).toInt()
+        capsuleHeight = (56 * dp).toInt()
 
         windowParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -127,7 +133,7 @@ class LiveIslandView(private val context: Context) {
         // 3. 灵动岛核心卡片容器（纯黑背景与物理摄像头一体化，圆润饱满药丸形）
         val islandBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = capsuleHeight / 2f
+            cornerRadius = 20 * dp
             setColor(Color.BLACK) // 纯黑以使前摄镜头完美融为一体
             setStroke((1 * dp).toInt(), Color.parseColor("#262626")) // 微光质感边框
         }
@@ -135,29 +141,53 @@ class LiveIslandView(private val context: Context) {
         islandCard.elevation = 16 * dp
 
         // ==========================================
-        // 4. 构建折叠态布局 (Compact Island: 包裹前摄并左右翼展)
+        // 4. 构建折叠态布局 (Compact Island: 上层包裹前摄，下层下沉延伸展示核心消息)
         // ==========================================
-        compactLayout.orientation = LinearLayout.HORIZONTAL
-        compactLayout.gravity = Gravity.CENTER_VERTICAL
-        compactLayout.setPadding((12 * dp).toInt(), 0, (12 * dp).toInt(), 0)
+        compactLayout.orientation = LinearLayout.VERTICAL
+        compactLayout.gravity = Gravity.CENTER_HORIZONTAL
+        compactLayout.setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (6 * dp).toInt())
+
+        // 4.1 顶部行 (前摄包裹行：极简车次编号 + 物理打孔避让 + 车型次要标注，在通知栏区域极简呈现)
+        compactTopRow.orientation = LinearLayout.HORIZONTAL
+        compactTopRow.gravity = Gravity.CENTER_VERTICAL
 
         // 左翼：车次徽章
         tvCompactTrain.setTextColor(Color.WHITE)
-        tvCompactTrain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        tvCompactTrain.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
         tvCompactTrain.setTypeface(null, android.graphics.Typeface.BOLD)
-        compactLayout.addView(tvCompactTrain)
+        compactTopRow.addView(tvCompactTrain)
 
         // 中间：摄像头物理开孔避让留白（使物理镜头正好落在纯黑无字安全区）
         val cameraHoleParams = LinearLayout.LayoutParams((22 * dp).toInt(), 1)
         spacerCameraHole.layoutParams = cameraHoleParams
-        compactLayout.addView(spacerCameraHole)
+        compactTopRow.addView(spacerCameraHole)
 
-        // 右翼：倒计时 / 发车时刻指示
-        tvCompactTime.setTextColor(Color.parseColor("#94A3B8"))
-        tvCompactTime.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-        compactLayout.addView(tvCompactTime)
+        // 右翼：车型次要标注 (如 城际动车 / 高速动车 / 动车组)
+        tvCompactCategory.setTextColor(Color.parseColor("#94A3B8"))
+        tvCompactCategory.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        compactTopRow.addView(tvCompactCategory)
 
-        // 右翼：精简检票口药丸
+        compactLayout.addView(compactTopRow)
+
+        // 4.2 底部行 (状态栏下方下沉延展区：发到站与倒计时/状态 + 精简检票口药丸)
+        compactBottomRow.orientation = LinearLayout.HORIZONTAL
+        compactBottomRow.gravity = Gravity.CENTER_VERTICAL
+        val bottomRowLp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = (3 * dp).toInt()
+        }
+        compactBottomRow.layoutParams = bottomRowLp
+
+        // 核心动态消息：发到站 + 倒计时/运行状态
+        tvCompactMessage.setTextColor(Color.parseColor("#F1F5F9"))
+        tvCompactMessage.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
+        tvCompactMessage.maxLines = 1
+        tvCompactMessage.ellipsize = android.text.TextUtils.TruncateAt.END
+        compactBottomRow.addView(tvCompactMessage)
+
+        // 精简检票口药丸
         val gateBg = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
             cornerRadius = 5 * dp
@@ -165,9 +195,9 @@ class LiveIslandView(private val context: Context) {
         }
         tvCompactGate.background = gateBg
         tvCompactGate.setTextColor(Color.WHITE)
-        tvCompactGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        tvCompactGate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
         tvCompactGate.setTypeface(null, android.graphics.Typeface.BOLD)
-        tvCompactGate.setPadding((6 * dp).toInt(), (2 * dp).toInt(), (6 * dp).toInt(), (2 * dp).toInt())
+        tvCompactGate.setPadding((5 * dp).toInt(), (1.5f * dp).toInt(), (5 * dp).toInt(), (1.5f * dp).toInt())
         val gateParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -175,11 +205,13 @@ class LiveIslandView(private val context: Context) {
             leftMargin = (6 * dp).toInt()
         }
         tvCompactGate.layoutParams = gateParams
-        compactLayout.addView(tvCompactGate)
+        compactBottomRow.addView(tvCompactGate)
+
+        compactLayout.addView(compactBottomRow)
 
         val compactLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
+            FrameLayout.LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.CENTER
         }
@@ -344,22 +376,22 @@ class LiveIslandView(private val context: Context) {
 
             // 胶囊垂直 Y 轴：从前摄顶部往上留 2dp 贴合包裹（刚好比通知栏文字稍高一点，绝不顶死屏幕顶端）
             capsuleTopY = (cutout.top - (2 * dp).toInt()).coerceAtLeast(0)
-            // 高度：拉高至 48dp 以上，大幅向下延展越过状态栏底线，确保 100% 盲按命中且杜绝通知栏截胡
-            val minTouchHeight = (48 * dp).toInt()
-            val minCutoutHeight = holeHeight + (26 * dp).toInt()
+            // 高度：前摄包裹行 + 下方下沉延展行，确保核心消息完全落在状态栏下方黄金安全区
+            val minTouchHeight = (56 * dp).toInt()
+            val minCutoutHeight = holeHeight + (34 * dp).toInt()
             capsuleHeight = kotlin.math.max(minTouchHeight, minCutoutHeight)
 
             // 中间留白：正好等于前摄孔径 + 10dp 安全余量
             val spacerWidth = holeWidth + (10 * dp).toInt()
             spacerCameraHole.layoutParams = LinearLayout.LayoutParams(spacerWidth, 1)
         } else {
-            // 兜底（左打孔或无挖孔机型）：高度设为 48dp，距离顶部约 4dp
+            // 兜底（左打孔或无挖孔机型）：高度设为 56dp，距离顶部约 4dp
             capsuleTopY = (statusBarHeight * 0.12f).toInt().coerceAtLeast((2 * dp).toInt())
-            capsuleHeight = (48 * dp).toInt()
+            capsuleHeight = (56 * dp).toInt()
             spacerCameraHole.layoutParams = LinearLayout.LayoutParams((16 * dp).toInt(), 1)
         }
 
-        val cornerRadius = capsuleHeight / 2f
+        val cornerRadius = 20 * dp
         (islandCard.background as? GradientDrawable)?.cornerRadius = cornerRadius
 
         if (!isExpanded) {
@@ -383,8 +415,15 @@ class LiveIslandView(private val context: Context) {
     fun updateTrip(trip: Trip) {
         currentTrip = trip
 
-        // 1. 更新折叠态
+        // 1. 更新顶部打孔行（次要基础标识：车次 + 车型，在通知栏区域极简呈现）
         tvCompactTrain.text = "🚄 ${trip.trainCode}"
+        tvCompactCategory.text = getTrainCategory(trip.trainCode)
+
+        // 2. 更新底部下沉消息行（向下扩出展示核心消息：发到站与状态/倒计时 + 检票口）
+        val countdown = getCountdownText(trip)
+        val routeDesc = "${trip.departureStation} ➔ ${trip.arrivalStation}"
+        tvCompactMessage.text = "$routeDesc · $countdown"
+
         val gate = trip.getCleanTicketGate()
         val shortGate = getShortGate(gate)
         if (shortGate.isNotBlank()) {
@@ -394,17 +433,8 @@ class LiveIslandView(private val context: Context) {
             tvCompactGate.visibility = View.GONE
         }
 
-        // 计算发车倒计时或状态文本
-        val countdown = getCountdownText(trip)
-        tvCompactTime.text = countdown
-
-        // 2. 更新展开态
-        val category = when (trip.trainCode.firstOrNull()?.uppercaseChar()) {
-            'G' -> "高铁"
-            'D' -> "动车"
-            'C' -> "城际"
-            else -> "列车"
-        }
+        // 3. 更新展开态
+        val category = getTrainCategory(trip.trainCode)
         tvExpandedTitle.text = "${trip.trainCode} · $category"
 
         val stage = trip.getStage()
@@ -477,7 +507,7 @@ class LiveIslandView(private val context: Context) {
 
         val targetWidth = (340 * dp).toInt()
         val targetRadius = 24 * dp
-        val initialRadius = capsuleHeight / 2f
+        val initialRadius = 20 * dp
 
         val animator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 260
@@ -514,7 +544,7 @@ class LiveIslandView(private val context: Context) {
         cardLp.height = capsuleHeight
         islandCard.layoutParams = cardLp
 
-        (islandCard.background as? GradientDrawable)?.cornerRadius = capsuleHeight / 2f
+        (islandCard.background as? GradientDrawable)?.cornerRadius = 20 * dp
 
         // 恢复紧凑型 WindowParams，恢复前摄精确 Y 坐标，允许外部触摸穿透
         windowParams.width = WindowManager.LayoutParams.WRAP_CONTENT
@@ -585,6 +615,20 @@ class LiveIslandView(private val context: Context) {
             }
         } catch (_: Exception) {
             "候车"
+        }
+    }
+
+    private fun getTrainCategory(trainCode: String): String {
+        return when (trainCode.firstOrNull()?.uppercaseChar()) {
+            'G' -> "高速动车"
+            'D' -> "动车组"
+            'C' -> "城际动车"
+            'Z' -> "直达特快"
+            'T' -> "特快列车"
+            'K' -> "快速列车"
+            'Y' -> "旅游专列"
+            'S' -> "市域快铁"
+            else -> "铁路列车"
         }
     }
 
