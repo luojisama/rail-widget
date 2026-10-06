@@ -212,38 +212,102 @@ object TripWidgetRenderer {
         val gate = trip.getCleanTicketGate()
         views.setTextViewText(R.id.tv_gate, if (gate.isBlank() || gate == "暂无") "检票口 未出" else "检票口 $gate")
 
-        // 渲染沿途经停站 (4x4 及以上多尺寸小组件深度展示中途车站)
+        // 渲染沿途经停站 (4x4 及以上多尺寸小组件深度展示乘车区间中途车站)
         if (trip.stops.isNotEmpty()) {
             views.setViewVisibility(R.id.tv_stops_summary, android.view.View.GONE)
             views.setViewVisibility(R.id.tv_stops_badge, android.view.View.VISIBLE)
-            views.setTextViewText(R.id.tv_stops_badge, "共 ${trip.stops.size} 站")
 
             val rowIds = listOf(R.id.row_stop_1, R.id.row_stop_2, R.id.row_stop_3, R.id.row_stop_4, R.id.row_stop_5)
             val nameIds = listOf(R.id.tv_stop_1_name, R.id.tv_stop_2_name, R.id.tv_stop_3_name, R.id.tv_stop_4_name, R.id.tv_stop_5_name)
             val timeIds = listOf(R.id.tv_stop_1_time, R.id.tv_stop_2_time, R.id.tv_stop_3_time, R.id.tv_stop_4_time, R.id.tv_stop_5_time)
 
-            val displayStops = if (trip.stops.size <= 5) {
-                trip.stops
-            } else {
-                val list = mutableListOf<team.shiro.railwidget.data.model.StopInfo>()
-                list.add(trip.stops.first())
-                val remainingSlots = 3
-                val middleStops = trip.stops.subList(1, trip.stops.size - 1)
-                val step = (middleStops.size.toFloat() / remainingSlots).coerceAtLeast(1f)
-                for (i in 0 until remainingSlots) {
-                    val idx = (i * step).toInt().coerceAtMost(middleStops.size - 1)
-                    if (!list.contains(middleStops[idx])) {
-                        list.add(middleStops[idx])
+            // 1. 精准定位乘客乘车区间的上车与下车站索引
+            val targetDep = trip.departureStation.replace("站", "").trim()
+            val targetArr = trip.arrivalStation.replace("站", "").trim()
+            val depIdx = trip.stops.indexOfFirst {
+                it.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
+            }
+            val arrIdx = trip.stops.indexOfFirst {
+                it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+            }
+
+            // 2. 计算展示车站列表（优先展示用户乘车区间，严禁盲目采样全线无关首尾）
+            val displayStops: List<team.shiro.railwidget.data.model.StopInfo> = when {
+                depIdx in 0..arrIdx -> {
+                    val rideSpan = trip.stops.subList(depIdx, arrIdx + 1)
+                    if (rideSpan.size <= 5) {
+                        rideSpan
+                    } else {
+                        val list = mutableListOf<team.shiro.railwidget.data.model.StopInfo>()
+                        list.add(rideSpan.first())
+                        val remainingSlots = 3
+                        val middleStops = rideSpan.subList(1, rideSpan.size - 1)
+                        val step = (middleStops.size.toFloat() / remainingSlots).coerceAtLeast(1f)
+                        for (k in 0 until remainingSlots) {
+                            val idx = (k * step).toInt().coerceAtMost(middleStops.size - 1)
+                            if (!list.contains(middleStops[idx])) {
+                                list.add(middleStops[idx])
+                            }
+                        }
+                        list.add(rideSpan.last())
+                        list
                     }
                 }
-                list.add(trip.stops.last())
-                list
+                depIdx >= 0 -> {
+                    val count = 5.coerceAtMost(trip.stops.size - depIdx)
+                    trip.stops.subList(depIdx, depIdx + count)
+                }
+                arrIdx >= 0 -> {
+                    val start = 0.coerceAtLeast(arrIdx - 4)
+                    trip.stops.subList(start, arrIdx + 1)
+                }
+                trip.stops.size <= 5 -> trip.stops
+                else -> {
+                    val list = mutableListOf<team.shiro.railwidget.data.model.StopInfo>()
+                    list.add(trip.stops.first())
+                    val remainingSlots = 3
+                    val middleStops = trip.stops.subList(1, trip.stops.size - 1)
+                    val step = (middleStops.size.toFloat() / remainingSlots).coerceAtLeast(1f)
+                    for (k in 0 until remainingSlots) {
+                        val idx = (k * step).toInt().coerceAtMost(middleStops.size - 1)
+                        if (!list.contains(middleStops[idx])) {
+                            list.add(middleStops[idx])
+                        }
+                    }
+                    list.add(trip.stops.last())
+                    list
+                }
             }
+
+            // 3. 设置徽标状态文案
+            val badgeText = if (depIdx in 0..arrIdx) {
+                val rideCount = arrIdx - depIdx + 1
+                if (rideCount < trip.stops.size) {
+                    "乘车区间 ${rideCount}站 · 全线 ${trip.stops.size}站"
+                } else {
+                    "全线共 ${trip.stops.size} 站"
+                }
+            } else {
+                "共 ${trip.stops.size} 站"
+            }
+            views.setTextViewText(R.id.tv_stops_badge, badgeText)
 
             for (i in 0 until 5) {
                 if (i < displayStops.size) {
                     val stop = displayStops[i]
                     views.setViewVisibility(rowIds[i], android.view.View.VISIBLE)
+
+                    val isBoarding = stop.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
+                    val isAlighting = stop.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+
+                    val prefix = if (isBoarding || isAlighting) "● " else "  "
+                    val suffix = when {
+                        isBoarding -> " (上车)"
+                        isAlighting -> " (下车)"
+                        else -> ""
+                    }
+                    views.setTextViewText(nameIds[i], "$prefix${stop.stationNo} ${stop.stationName}$suffix")
+
                     val isStart = stop.arriveTime == "----" || stop.arriveTime.isBlank()
                     val isEnd = stop.startTime == "----" || stop.startTime.isBlank()
                     val dwell = when {
@@ -252,14 +316,20 @@ object TripWidgetRenderer {
                         stop.stopoverTime.isNotBlank() -> "停${stop.stopoverTime}"
                         else -> ""
                     }
+
                     val timeStr = when {
+                        isBoarding -> {
+                            if (isStart) "${stop.startTime} 开"
+                            else "${stop.arriveTime}到 / ${stop.startTime}开"
+                        }
+                        isAlighting -> {
+                            "${stop.arriveTime} 到"
+                        }
                         isStart -> "${stop.startTime} 开"
                         isEnd -> "${stop.arriveTime} 到"
-                        else -> "${stop.arriveTime}到 / ${stop.startTime}开 ($dwell)"
+                        dwell.isNotBlank() -> "${stop.arriveTime}到 / ${stop.startTime}开 ($dwell)"
+                        else -> "${stop.arriveTime}到 / ${stop.startTime}开"
                     }
-                    val isUserStop = stop.stationName.contains(trip.departureStation) || stop.stationName.contains(trip.arrivalStation)
-                    val prefix = if (isUserStop) "● " else "  "
-                    views.setTextViewText(nameIds[i], "$prefix${stop.stationNo} ${stop.stationName}")
                     views.setTextViewText(timeIds[i], timeStr)
                 } else {
                     views.setViewVisibility(rowIds[i], android.view.View.GONE)
@@ -308,5 +378,131 @@ object TripWidgetRenderer {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
+
+    data class DisplayStopItem(
+        val stop: team.shiro.railwidget.data.model.StopInfo,
+        val isBoarding: Boolean,
+        val isAlighting: Boolean,
+        val nameText: String,
+        val timeText: String
+    )
+
+    data class WidgetStopsResult(
+        val badgeText: String,
+        val items: List<DisplayStopItem>
+    )
+
+    fun resolveWidgetStops(trip: Trip): WidgetStopsResult {
+        if (trip.stops.isEmpty()) {
+            return WidgetStopsResult("", emptyList())
+        }
+
+        val targetDep = trip.departureStation.replace("站", "").trim()
+        val targetArr = trip.arrivalStation.replace("站", "").trim()
+        val depIdx = trip.stops.indexOfFirst {
+            it.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
+        }
+        val arrIdx = trip.stops.indexOfFirst {
+            it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+        }
+
+        val displayStops: List<team.shiro.railwidget.data.model.StopInfo> = when {
+            depIdx in 0..arrIdx -> {
+                val rideSpan = trip.stops.subList(depIdx, arrIdx + 1)
+                if (rideSpan.size <= 5) {
+                    rideSpan
+                } else {
+                    val list = mutableListOf<team.shiro.railwidget.data.model.StopInfo>()
+                    list.add(rideSpan.first())
+                    val remainingSlots = 3
+                    val middleStops = rideSpan.subList(1, rideSpan.size - 1)
+                    val step = (middleStops.size.toFloat() / remainingSlots).coerceAtLeast(1f)
+                    for (k in 0 until remainingSlots) {
+                        val idx = (k * step).toInt().coerceAtMost(middleStops.size - 1)
+                        if (!list.contains(middleStops[idx])) {
+                            list.add(middleStops[idx])
+                        }
+                    }
+                    list.add(rideSpan.last())
+                    list
+                }
+            }
+            depIdx >= 0 -> {
+                val count = 5.coerceAtMost(trip.stops.size - depIdx)
+                trip.stops.subList(depIdx, depIdx + count)
+            }
+            arrIdx >= 0 -> {
+                val start = 0.coerceAtLeast(arrIdx - 4)
+                trip.stops.subList(start, arrIdx + 1)
+            }
+            trip.stops.size <= 5 -> trip.stops
+            else -> {
+                val list = mutableListOf<team.shiro.railwidget.data.model.StopInfo>()
+                list.add(trip.stops.first())
+                val remainingSlots = 3
+                val middleStops = trip.stops.subList(1, trip.stops.size - 1)
+                val step = (middleStops.size.toFloat() / remainingSlots).coerceAtLeast(1f)
+                for (k in 0 until remainingSlots) {
+                    val idx = (k * step).toInt().coerceAtMost(middleStops.size - 1)
+                    if (!list.contains(middleStops[idx])) {
+                        list.add(middleStops[idx])
+                    }
+                }
+                list.add(trip.stops.last())
+                list
+            }
+        }
+
+        val badgeText = if (depIdx in 0..arrIdx) {
+            val rideCount = arrIdx - depIdx + 1
+            if (rideCount < trip.stops.size) {
+                "乘车区间 ${rideCount}站 · 全线 ${trip.stops.size}站"
+            } else {
+                "全线共 ${trip.stops.size} 站"
+            }
+        } else {
+            "共 ${trip.stops.size} 站"
+        }
+
+        val items = displayStops.map { stop ->
+            val isBoarding = stop.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
+            val isAlighting = stop.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+
+            val prefix = if (isBoarding || isAlighting) "● " else "  "
+            val suffix = when {
+                isBoarding -> " (上车)"
+                isAlighting -> " (下车)"
+                else -> ""
+            }
+            val nameText = "$prefix${stop.stationNo} ${stop.stationName}$suffix"
+
+            val isStart = stop.arriveTime == "----" || stop.arriveTime.isBlank()
+            val isEnd = stop.startTime == "----" || stop.startTime.isBlank()
+            val dwell = when {
+                isStart -> "始发"
+                isEnd -> "终到"
+                stop.stopoverTime.isNotBlank() -> "停${stop.stopoverTime}"
+                else -> ""
+            }
+
+            val timeText = when {
+                isBoarding -> {
+                    if (isStart) "${stop.startTime} 开"
+                    else "${stop.arriveTime}到 / ${stop.startTime}开"
+                }
+                isAlighting -> {
+                    "${stop.arriveTime} 到"
+                }
+                isStart -> "${stop.startTime} 开"
+                isEnd -> "${stop.arriveTime} 到"
+                dwell.isNotBlank() -> "${stop.arriveTime}到 / ${stop.startTime}开 ($dwell)"
+                else -> "${stop.arriveTime}到 / ${stop.startTime}开"
+            }
+
+            DisplayStopItem(stop, isBoarding, isAlighting, nameText, timeText)
+        }
+
+        return WidgetStopsResult(badgeText, items)
     }
 }

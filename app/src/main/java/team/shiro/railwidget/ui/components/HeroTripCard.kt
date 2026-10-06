@@ -884,9 +884,18 @@ fun TimetableTable(
                 )
             }
 
+            val targetDep = trip.departureStation.replace("站", "").trim()
+            val targetArr = trip.arrivalStation.replace("站", "").trim()
+            val boardingIndex = stopList.indexOfFirst {
+                it.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
+            }
+            val alightingIndex = stopList.indexOfFirst {
+                it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+            }
+
             stopList.forEachIndexed { index, stop ->
-                val isBoarding = stop.stationName.startsWith(trip.departureStation) || trip.departureStation.startsWith(stop.stationName)
-                val isAlighting = stop.stationName.startsWith(trip.arrivalStation) || trip.arrivalStation.startsWith(stop.stationName)
+                val isBoarding = index == boardingIndex
+                val isAlighting = index == alightingIndex
                 val isKeyStop = isBoarding || isAlighting
 
                 val rowBg = when {
