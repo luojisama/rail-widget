@@ -224,6 +224,133 @@ class Parser12306Test {
         assertEquals("6.0元", trip.price)
         assertEquals("", trip.departureTime)
     }
+
+    @Test
+    fun testUserNoSeatRealEmailParsing() {
+        val email = """
+            原始邮件
+            发件人：12306 <12306@rails.com.cn>
+            发件时间：2026年10月6日 15:19
+            收件人：2534316454@qq.com <2534316454@qq.com>
+            主题：网上购票系统-用户支付通知
+            尊敬的 李全航先生：
+            您好！
+            您于2026年10月06日在中国铁路客户服务中心网站([12306.cn](http://www.12306.cn/)) 成功购买了1张车票，票款共计176.00元，订单号码 EQ97461082 。 所购车票信息如下：
+            1.李全航，2026年10月07日11:14开，普洱站-昆明南站，D236次列车，3车无座，二等座，成人票，票价176.0元，电子客票。
+            温馨提示
+            （1）订单信息查询有效期限为30日。
+            （2）为了确保旅客人身安全和列车运行秩序，车站将在开车时间之前提前停止售票、检票，请合理安排出行时间，提前到乘车站办理换票、安检、验证并到指定场所候车，以免耽误乘车。
+            （3）购票后如需报销凭证，可在行程结束后180天内通过中国铁路12306网站（含12306移动端）或车站售票窗口（不含客票代售点）、自动售票机申请开具铁路电子发票。在香港西九龙站或港铁公司代售点购票的，仅限在香港西九龙站换取报销凭证。
+            （4）改签、变更到站、退票相关规则详见[退改说明](https://mobile.12306.cn/otsmobile/h5/otsbussiness/info/orderWarmTips.html)。
+            （5）禁限品和托运物品详细规定详见[《铁路旅客禁止、限制携带和托运物品目录》](https://kyfw.12306.cn/otn/gonggao/saleTicketMeans.html?linktypeid=means6)。
+            （6）未尽事项，请详见[《铁路旅客运输规程》](https://kyfw.12306.cn/otn/gonggao/saleTicketMeans.html?linktypeid=means2)、 [《铁路旅客运输办理细则》](https://kyfw.12306.cn/otn/gonggao/saleTicketMeans.html?linktypeid=means4)、 [《铁路旅客电子客票暂行实施办法》](https://kyfw.12306.cn/otn/gonggao/saleTicketMeans.html?linktypeid=means8)、 [《铁路互联网售票暂行办法》](https://kyfw.12306.cn/otn/gonggao/saleTicketMeans.html?linktypeid=means1)等规定和车站公告。
+            感谢您使用中国铁路客户服务中心网站12306.cn！ 本邮件由系统自动发出，请勿回复。
+            祝旅途愉快！
+            中国铁路客户服务中心
+            2026年10月06日
+        """.trimIndent()
+
+        val trips = Parser12306.parseEmail(email)
+        assertEquals(1, trips.size)
+        val trip = trips[0]
+
+        assertEquals("EQ97461082", trip.orderNo)
+        assertEquals("李全航", trip.passengerName)
+        assertEquals("D236", trip.trainCode)
+        assertEquals("普洱", trip.departureStation)
+        assertEquals("昆明南", trip.arrivalStation)
+        // 关键断言：发车日期必须为 10月7日，严禁被发件时间/下单时间 10月6日 篡改
+        assertEquals("2026-10-07", trip.departureDate)
+        assertEquals("11:14", trip.departureTime)
+        assertEquals("3车", trip.carriage)
+        assertEquals("无座", trip.seat)
+        assertEquals("二等座", trip.seatType)
+        // 关键断言：票种必须为 成人票，严禁被温馨提示中的“改签规则”误判为改签票
+        assertEquals("成人票", trip.ticketType)
+        assertEquals("176.0元", trip.price)
+        // 关键断言：电子客票严禁被当作检票口
+        assertEquals("", trip.ticketGate)
+    }
+
+    @Test
+    fun testSleeperEmailParsing() {
+        val email = """
+            尊敬的 王五先生：
+            您好！订单号码 E123456789 。 所购车票信息如下：
+            1.王五，2026年10月08日20:30开，北京站-沈阳站，K123次列车，05车18号下铺，硬卧，成人票，票价210.0元，电子客票。
+        """.trimIndent()
+
+        val trips = Parser12306.parseEmail(email)
+        assertEquals(1, trips.size)
+        val trip = trips[0]
+
+        assertEquals("E123456789", trip.orderNo)
+        assertEquals("王五", trip.passengerName)
+        assertEquals("K123", trip.trainCode)
+        assertEquals("北京", trip.departureStation)
+        assertEquals("沈阳", trip.arrivalStation)
+        assertEquals("2026-10-08", trip.departureDate)
+        assertEquals("20:30", trip.departureTime)
+        assertEquals("05车", trip.carriage)
+        assertEquals("18号下铺", trip.seat)
+        assertEquals("硬卧", trip.seatType)
+        assertEquals("成人票", trip.ticketType)
+        assertEquals("210.0元", trip.price)
+    }
+
+    @Test
+    fun testMultiTicketsEmailParsing() {
+        val email = """
+            主题：网上购票系统-用户支付通知
+            尊敬的 李先生：
+            您于2026年10月06日成功购买了2张车票，订单号码 EQ97461082 。 所购车票信息如下：
+            1.李全航，2026年10月07日11:14开，普洱站-昆明南站，D236次列车，3车无座，二等座，成人票，票价176.0元，电子客票。
+            2.李小航，2026年10月07日11:14开，普洱站-昆明南站，D236次列车，3车无座，二等座，儿童票，票价88.0元，电子客票。
+            温馨提示
+            （4）改签、变更到站相关规则详见退改说明。
+        """.trimIndent()
+
+        val trips = Parser12306.parseEmail(email)
+        assertEquals(2, trips.size)
+
+        val trip1 = trips[0]
+        assertEquals("EQ97461082", trip1.orderNo)
+        assertEquals("李全航", trip1.passengerName)
+        assertEquals("成人票", trip1.ticketType)
+        assertEquals("176.0元", trip1.price)
+
+        val trip2 = trips[1]
+        assertEquals("EQ97461082-2", trip2.orderNo)
+        assertEquals("李小航", trip2.passengerName)
+        assertEquals("儿童票", trip2.ticketType)
+        assertEquals("88.0元", trip2.price)
+    }
+
+    @Test
+    fun testGenericTextFallbackDefensiveParsing() {
+        val email = """
+            主题：网上购票系统-用户支付通知
+            发件时间： 2026年10月6日 15:19
+            您好！您于2026年10月06日成功购买了1张车票，订单号码 EQ97461082 。
+            1.李全航，2026年10月07日11:14开，普洱站-昆明南站，D236次列车，3车无座，二等座，成人票，票价176.0元，电子客票。
+            温馨提示：（4）改签规则详见说明。
+        """.trimIndent()
+
+        // 强行用 parseGenericText 处理整篇邮件，检验兜底防御性
+        val trip = Parser12306.parseGenericText(email, "EQ97461082", "李全航", "EMAIL")
+        assertNotNull(trip)
+        trip!!
+
+        assertEquals("D236", trip.trainCode)
+        assertEquals("普洱", trip.departureStation)
+        assertEquals("昆明南", trip.arrivalStation)
+        assertEquals("2026-10-07", trip.departureDate)
+        assertEquals("11:14", trip.departureTime)
+        assertEquals("3车", trip.carriage)
+        assertEquals("无座", trip.seat)
+        assertEquals("二等座", trip.seatType)
+        assertEquals("成人票", trip.ticketType)
+    }
 }
 
 
