@@ -403,8 +403,16 @@ object TripWidgetRenderer {
         val depIdx = trip.stops.indexOfFirst {
             it.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
         }
-        val arrIdx = trip.stops.indexOfFirst {
-            it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+        val arrIdx = if (depIdx >= 0) {
+            trip.stops.indices.firstOrNull { i ->
+                i > depIdx && trip.stops[i].stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+            } ?: trip.stops.indexOfFirst {
+                it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+            }
+        } else {
+            trip.stops.indexOfFirst {
+                it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+            }
         }
 
         val displayStops: List<team.shiro.railwidget.data.model.StopInfo> = when {
@@ -417,15 +425,22 @@ object TripWidgetRenderer {
                     list.add(rideSpan.first())
                     val remainingSlots = 3
                     val middleStops = rideSpan.subList(1, rideSpan.size - 1)
-                    val step = (middleStops.size.toFloat() / remainingSlots).coerceAtLeast(1f)
                     for (k in 0 until remainingSlots) {
-                        val idx = (k * step).toInt().coerceAtMost(middleStops.size - 1)
+                        val idx = ((k + 0.5f) * middleStops.size / remainingSlots).toInt().coerceIn(0, middleStops.size - 1)
                         if (!list.contains(middleStops[idx])) {
                             list.add(middleStops[idx])
                         }
                     }
+                    if (list.size < 4 && middleStops.size >= 2) {
+                        for (s in middleStops) {
+                            if (!list.contains(s)) {
+                                list.add(s)
+                                if (list.size == 4) break
+                            }
+                        }
+                    }
                     list.add(rideSpan.last())
-                    list
+                    list.sortedBy { trip.stops.indexOf(it) }
                 }
             }
             depIdx >= 0 -> {
@@ -442,15 +457,14 @@ object TripWidgetRenderer {
                 list.add(trip.stops.first())
                 val remainingSlots = 3
                 val middleStops = trip.stops.subList(1, trip.stops.size - 1)
-                val step = (middleStops.size.toFloat() / remainingSlots).coerceAtLeast(1f)
                 for (k in 0 until remainingSlots) {
-                    val idx = (k * step).toInt().coerceAtMost(middleStops.size - 1)
+                    val idx = ((k + 0.5f) * middleStops.size / remainingSlots).toInt().coerceIn(0, middleStops.size - 1)
                     if (!list.contains(middleStops[idx])) {
                         list.add(middleStops[idx])
                     }
                 }
                 list.add(trip.stops.last())
-                list
+                list.sortedBy { trip.stops.indexOf(it) }
             }
         }
 

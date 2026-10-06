@@ -76,9 +76,18 @@ object RailwayApiService {
             }
 
             val targetArrStation = effectiveArrStation.replace("站", "").trim()
-            val matchedStop = stops.find {
-                it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
-            } ?: stops.lastOrNull()
+            val depIndex = if (matchedDepStop != null) stops.indexOf(matchedDepStop) else -1
+            val matchedStop = if (depIndex >= 0 && depIndex < stops.size - 1) {
+                stops.subList(depIndex + 1, stops.size).find {
+                    it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
+                } ?: stops.find {
+                    it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
+                } ?: stops.lastOrNull()
+            } else {
+                stops.find {
+                    it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
+                } ?: stops.lastOrNull()
+            }
 
             val actualDepTime = if (matchedDepStop != null && matchedDepStop.startTime != "----") {
                 matchedDepStop.startTime

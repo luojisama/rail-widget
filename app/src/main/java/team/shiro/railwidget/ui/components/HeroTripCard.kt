@@ -889,17 +889,27 @@ fun TimetableTable(
             val boardingIndex = stopList.indexOfFirst {
                 it.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
             }
-            val alightingIndex = stopList.indexOfFirst {
-                it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+            val alightingIndex = if (boardingIndex >= 0) {
+                stopList.indices.firstOrNull { i ->
+                    i > boardingIndex && stopList[i].stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+                } ?: stopList.indexOfFirst {
+                    it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+                }
+            } else {
+                stopList.indexOfFirst {
+                    it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
+                }
             }
 
             stopList.forEachIndexed { index, stop ->
                 val isBoarding = index == boardingIndex
                 val isAlighting = index == alightingIndex
                 val isKeyStop = isBoarding || isAlighting
+                val isInRideSpan = boardingIndex in 0 until alightingIndex && index in (boardingIndex + 1) until alightingIndex
 
                 val rowBg = when {
                     isKeyStop && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
+                    isInRideSpan && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.07f)
                     index % 2 == 1 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
                     else -> Color.Transparent
                 }
