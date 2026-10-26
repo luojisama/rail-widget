@@ -81,6 +81,7 @@ import android.content.IntentFilter
 import androidx.core.content.ContextCompat
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import team.shiro.railwidget.sync.TripRefresh
@@ -143,6 +144,18 @@ class MainActivity : ComponentActivity() {
         setContent {
             RailWidgetTheme {
                 MainScreen()
+            }
+        }
+        window.decorView.post {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    TripRefresh.initialize(applicationContext)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    team.shiro.railwidget.diagnostics.CrashDiagnostics.record(applicationContext, "BackgroundStartup", error)
+                    android.util.Log.e("RailCardStartup", "Background initialization failed", error)
+                }
             }
         }
     }

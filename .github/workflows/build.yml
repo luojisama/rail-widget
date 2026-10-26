@@ -142,7 +142,7 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const tag = 'v1.3.1-preview.1';
+            const tag = 'v1.3.1-preview.2';
             const name = 'RailCard-v1.3.1.apk';
             let release;
             try {

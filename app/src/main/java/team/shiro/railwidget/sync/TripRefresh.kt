@@ -68,8 +68,13 @@ object TripRefresh {
     fun enqueue(context: Context) {
         // Local state renders immediately, even if offline. Worker survives receiver/process exit.
         TripWidgetRenderer.updateAllWidgets(context)
-        WorkManager.getInstance(context).enqueueUniqueWork("trip-refresh", ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<TripRefreshWorker>().build())
+        try {
+            WorkManager.getInstance(context).enqueueUniqueWork("trip-refresh", ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequestBuilder<TripRefreshWorker>().build())
+        } catch (error: RuntimeException) {
+            team.shiro.railwidget.diagnostics.CrashDiagnostics.record(context, "BackgroundEnqueue", error)
+            android.util.Log.e("TripRefresh", "Unable to enqueue background refresh", error)
+        }
     }
 
     fun initialize(context: Context) {

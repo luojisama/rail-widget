@@ -24,7 +24,7 @@ class CrashReportActivity : Activity() {
             setPadding(padding, padding, padding, padding)
         }
         content.addView(TextView(this).apply {
-            text = "上次启动未完成"
+            text = "检测到启动异常"
             textSize = 22f
             setTextColor(0xFF0284C7.toInt())
         })
