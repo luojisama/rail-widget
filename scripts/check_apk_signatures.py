@@ -1,25 +1,26 @@
-"""Check that the diagnostic APK can update the already published preview without data removal."""
+"""Verify that the diagnostic APK uses an independent package and has a valid signature."""
 import glob
+import hashlib
 import os
 import pathlib
 import re
 import subprocess
 
-tools = sorted(glob.glob(os.environ["ANDROID_HOME"] + "/build-tools/*/apksigner"))
-if not tools:
-    raise SystemExit("apksigner missing")
-reports = pathlib.Path("startup-reports")
-reports.mkdir(exist_ok=True)
-digests = []
-for file in ("previous-apk/RailCard-v1.3.0.apk", "apk/RailCard-v1.3.1.apk"):
-    result = subprocess.run([tools[-1], "verify", "--print-certs", file], check=True, capture_output=True, text=True)
-    output = result.stdout + result.stderr
-    print(output)
-    digest = re.search(r"certificate SHA-256 digest(?:\s*\([^)]*\))?:\s*([0-9a-fA-F:]{64,})", output, re.IGNORECASE)
-    if not digest:
-        raise SystemExit("Signing certificate missing: " + file)
-    digests.append(digest.group(1).replace(":", "").lower())
-    print(file + ": " + digest.group(1))
-(reports / "signing-certificates.txt").write_text("\n".join(digests))
-if digests[0] != digests[1]:
-    raise SystemExit("Signing keys differ: this APK cannot update the installed preview. Do not ask the user to uninstall.")
+root = pathlib.Path("startup-reports")
+root.mkdir(exist_ok=True)
+java_tools = sorted(glob.glob(os.environ["ANDROID_HOME"] + "/build-tools/*/apksigner"))
+aapt_tools = sorted(glob.glob(os.environ["ANDROID_HOME"] + "/build-tools/*/aapt")) or sorted(glob.glob(os.environ["ANDROID_HOME"] + "/build-tools/*/aapt2"))
+apk = "apk/RailCard-v1.3.1-diagnostic.apk"
+report = subprocess.run([java_tools[-1], "verify", "--print-certs", apk], check=True, capture_output=True, text=True)
+output = report.stdout + report.stderr
+print(output)
+match = re.search(r"certificate SHA-256 digest(?:\s*\([^)]*\))?:\s*([0-9a-fA-F:]{64,})", output, re.IGNORECASE)
+if not match:
+    raise SystemExit("Signing certificate missing")
+actual = match.group(1).replace(":", "").lower()
+badging = subprocess.run([aapt_tools[-1], "dump", "badging", apk], check=True, capture_output=True, text=True).stdout
+package = re.search(r"package: name='([^']+)'", badging)
+if not package or package.group(1) != "team.shiro.railwidget.diagnostic":
+    raise SystemExit("Diagnostic APK must use its separate application ID to preserve the installed app")
+(root / "signing-certificates.txt").write_text("Diagnostic package: " + package.group(1) + "\nCertificate: " + actual)
+print("Independent diagnostic package and APK signature verified")

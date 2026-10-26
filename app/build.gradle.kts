@@ -29,6 +29,12 @@ android {
         debug {
             isMinifyEnabled = false
         }
+        create("diagnostic") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".diagnostic"
+            versionNameSuffix = "-diagnostic"
+            matchingFallbacks += listOf("debug")
+        }
     }
 
     applicationVariants.all {

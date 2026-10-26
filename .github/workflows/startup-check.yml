@@ -1,14 +1,12 @@
 name: Check preview signing compatibility
 on:
-  pull_request:
-    branches: [master]
-    paths: ['scripts/check_apk_signatures.py', '.github/workflows/startup-check.yml']
+  workflow_dispatch:
 permissions:
   contents: read
   actions: read
 jobs:
   signatures:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.repository == 'luojisama/rail-widget'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

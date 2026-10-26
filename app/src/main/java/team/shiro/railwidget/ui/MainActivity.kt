@@ -545,7 +545,7 @@ class MainActivity : ComponentActivity() {
                                     style = MaterialTheme.typography.titleLarge
                                 )
                                 Text(
-                                    text = "铁路行程与桌面小组件",
+                                    text = if (team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".diagnostic")) "启动排查版 · 原应用数据保留" else "铁路行程与桌面小组件",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

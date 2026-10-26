@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-package=team.shiro.railwidget
+package=${RAILCARD_STARTUP_PACKAGE:-team.shiro.railwidget}
 mkdir -p startup-reports
 adb shell am force-stop "$package"
 python3 - <<'PY'
@@ -30,7 +30,7 @@ adb push legacy-v2.db /data/local/tmp/railcard-legacy.db
 adb shell run-as "$package" mkdir -p databases
 adb shell run-as "$package" cp /data/local/tmp/railcard-legacy.db databases/rail_widget.db
 adb logcat -c
-adb shell am start -W -n "$package/.ui.MainActivity"
+adb shell am start -W -n "$package/team.shiro.railwidget.ui.MainActivity"
 sleep 10
 adb logcat -d -b crash > startup-reports/upgrade-crash.txt
 adb logcat -d > startup-reports/upgrade-logcat.txt
@@ -47,7 +47,7 @@ adb shell am force-stop "$package"
 printf 'Diagnostic startup fixture\n' > startup-reports/recovery-fixture.txt
 adb push startup-reports/recovery-fixture.txt /data/local/tmp/railcard-crash.txt
 adb shell run-as "$package" cp /data/local/tmp/railcard-crash.txt files/last-startup-crash.txt
-adb shell am start -W -n "$package/.ui.MainActivity"
+adb shell am start -W -n "$package/team.shiro.railwidget.ui.MainActivity"
 sleep 3
 adb shell uiautomator dump /sdcard/railcard-recovery.xml
 adb pull /sdcard/railcard-recovery.xml startup-reports/recovery-window.xml
