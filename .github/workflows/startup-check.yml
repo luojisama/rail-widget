@@ -2,7 +2,7 @@ name: Diagnose Android 13 startup
 on:
   pull_request:
     branches: [master]
-    paths: ['.github/workflows/startup-check.yml']
+    paths: ['.github/workflows/startup-check.yml', 'scripts/check_upgrade_startup.sh']
 permissions:
   contents: read
   actions: read
@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: RailCard-1.3.0-APK
@@ -40,9 +41,13 @@ jobs:
             cat startup-crash.txt
             adb shell pidof team.shiro.railwidget
             ! grep -q 'FATAL EXCEPTION' startup-crash.txt
+            bash scripts/check_upgrade_startup.sh
       - name: Upload startup logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: Android13-Startup-Logs
-          path: startup-*.txt
+          path: |
+            startup-*.txt
+            startup-reports/
+
