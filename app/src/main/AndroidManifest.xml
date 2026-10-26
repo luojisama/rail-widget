@@ -43,7 +43,6 @@
         <receiver
             android:name=".widget.TripWidget2x2Receiver"
             android:exported="true"
-            android:process=":widgetProvider"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/widget_2x2_name">
             <intent-filter>
@@ -58,7 +57,6 @@
         <receiver
             android:name=".widget.TripWidget4x2Receiver"
             android:exported="true"
-            android:process=":widgetProvider"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/widget_4x2_name">
             <intent-filter>
@@ -73,7 +71,6 @@
         <receiver
             android:name=".widget.TripWidget4x4Receiver"
             android:exported="true"
-            android:process=":widgetProvider"
             android:icon="@mipmap/ic_launcher"
             android:label="@string/widget_4x4_name">
             <intent-filter>
@@ -115,6 +112,7 @@
                 android:value="Train departure countdown and ticket gate live status overlay" />
         </service>
 
+        <receiver android:name=".widget.TripStateReceiver" android:exported="false" />
         <!-- Live Island Auto Launch Receiver -->
         <receiver
             android:name=".island.LiveIslandAutoLaunchReceiver"
@@ -122,6 +120,8 @@
             <intent-filter>
                 <action android:name="team.shiro.railwidget.action.ISLAND_AUTO_LAUNCH" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
@@ -130,3 +130,4 @@
     </application>
 
 </manifest>
+

@@ -20,23 +20,16 @@ class LiveIslandAutoLaunchReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action ?: return
         when (action) {
-            ACTION_AUTO_LAUNCH -> {
-                val orderNo = intent.getStringExtra(EXTRA_ORDER_NO)
-                if (IslandPermissionHelper.hasOverlayPermission(context) && LiveIslandScheduler.isAutoLaunchEnabled(context)) {
-                    val db = TripDatabaseHelper.getInstance(context)
-                    val trip = if (!orderNo.isNullOrBlank()) db.getTrip(orderNo) else db.getLatestUpcomingTrip()
-                    if (trip != null) {
-                        LiveIslandService.start(context, trip.orderNo)
-                    }
-                }
-                // 重新挂载后续可能的车次
-                LiveIslandScheduler.scheduleAutoLaunch(context)
-            }
+            ACTION_AUTO_LAUNCH,
             Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED",
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED -> {
-                // 系统开机或时区改变时，重新挂载最近车次的自动拉起闹钟
+                // Re-read current tickets and settings; never start a stale alarm's deleted trip.
                 LiveIslandScheduler.scheduleAutoLaunch(context)
+                team.shiro.railwidget.widget.TripStateScheduler.schedule(context)
+                team.shiro.railwidget.widget.TripWidgetRenderer.updateAllWidgets(context)
             }
         }
     }

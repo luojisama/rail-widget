@@ -5,7 +5,15 @@ data class StopInfo(
     val stationName: String,
     val arriveTime: String,
     val startTime: String,
-    val stopoverTime: String
+    val stopoverTime: String,
+    val mileageKm: Double? = null,
+    val lineMileage: String = "",
+    val platform: String = "",
+    val ticketGate: String = "",
+    val arrivalDay: Int? = null,
+    val departureDay: Int? = null,
+    val actualArrival: Long? = null,
+    val actualDeparture: Long? = null
 )
 
 enum class TripStage(val title: String) {
@@ -35,7 +43,18 @@ data class Trip(
     val detailUrl: String = "", // 12306 官方电子客票短链接
     val rawSource: String = "MANUAL",
     val updatedAt: Long = System.currentTimeMillis(),
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    val trainModel: String = "",
+    val railwayBureau: String = "",
+    val diningCar: String = "",
+    val platform: String = "",
+    val totalMileageKm: Double? = null,
+    val rideMileageKm: Double? = null,
+    val arrivalDayOffset: Int? = null,
+    val dataSource: String = "",
+    val dataCheckedAt: Long = 0,
+    val liveCheckedAt: Long = 0,
+    val ticketGateManual: Boolean = false
 ) {
     /**
      * 计算行程处于哪个核心阶段：未出行、在途中、已结束
@@ -44,7 +63,7 @@ data class Trip(
         val (depMillis, arrMillis) = calculateTimes()
         return when {
             currentTimeMillis < depMillis -> TripStage.UPCOMING
-            currentTimeMillis in depMillis..arrMillis -> TripStage.IN_TRANSIT
+            currentTimeMillis < arrMillis -> TripStage.IN_TRANSIT
             else -> TripStage.COMPLETED
         }
     }
@@ -66,34 +85,14 @@ data class Trip(
         }
     }
 
-    private fun calculateTimes(): Pair<Long, Long> {
-        return try {
-            val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
-            val validDepTime = if (departureTime.isNotBlank() && departureTime != "--:--" && departureTime != "00:00") {
-                departureTime
-            } else {
-                "00:00"
-            }
-            val depFullStr = "$departureDate $validDepTime"
-            val depDate = format.parse(depFullStr)
-            val depMillis = depDate?.time ?: System.currentTimeMillis()
-
-            val arrMillis = if (arrivalTime.isNotBlank() && arrivalTime != "--:--" && arrivalTime != "00:00") {
-                val arrFullStr = "$departureDate $arrivalTime"
-                val parsedArr = format.parse(arrFullStr)?.time ?: (depMillis + 2 * 3600 * 1000)
-                // 若到站时间跨日（数字小于发车时间），按次日推算
-                if (parsedArr < depMillis) parsedArr + 24 * 3600 * 1000 else parsedArr
-            } else {
-                depMillis + 2 * 3600 * 1000
-            }
-            Pair(depMillis, arrMillis)
-        } catch (_: Exception) {
-            Pair(System.currentTimeMillis(), System.currentTimeMillis() + 2 * 3600 * 1000)
-        }
-    }
+    private fun calculateTimes(): Pair<Long, Long> = Pair(
+        TripTimeline.parse(departureDate, departureTime) ?: 0L,
+        TripTimeline.arrival(this)
+    )
 
     fun getDepartureTimeMillis(): Long = calculateTimes().first
     fun getArrivalTimeMillis(): Long = calculateTimes().second
+    fun currentPosition(now: Long = System.currentTimeMillis()) = TripTimeline.position(this, now)
 
     fun getCleanTicketGate(): String {
         if (ticketGate.isBlank()) return "暂无"
@@ -105,4 +104,5 @@ data class Trip(
         return if (raw.isBlank()) "暂无" else raw
     }
 }
+
 

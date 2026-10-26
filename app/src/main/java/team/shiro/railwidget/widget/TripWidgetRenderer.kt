@@ -290,7 +290,7 @@ object TripWidgetRenderer {
             } else {
                 "共 ${trip.stops.size} 站"
             }
-            views.setTextViewText(R.id.tv_stops_badge, badgeText)
+            views.setTextViewText(R.id.tv_stops_badge, trip.currentPosition()?.label(trip) ?: badgeText)
 
             for (i in 0 until 5) {
                 if (i < displayStops.size) {
@@ -520,3 +520,4 @@ object TripWidgetRenderer {
         return WidgetStopsResult(badgeText, items)
     }
 }
+

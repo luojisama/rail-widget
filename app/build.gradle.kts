@@ -12,8 +12,8 @@ android {
         applicationId = "team.shiro.railwidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 24
-        versionName = "1.2.3"
+        versionCode = 25
+        versionName = "1.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -46,6 +46,8 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions { unitTests.isIncludeAndroidResources = true }
+
     buildFeatures {
         compose = true
         buildConfig = true
@@ -63,6 +65,7 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.activity:activity-compose:1.9.3")
 
     // Compose BOM & Material 3
@@ -89,5 +92,7 @@ dependencies {
 
     // Unit Testing
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
     testImplementation("org.json:json:20240303")
 }
+

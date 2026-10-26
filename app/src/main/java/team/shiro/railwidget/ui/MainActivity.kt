@@ -76,6 +76,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import team.shiro.railwidget.sync.TripRefresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -90,7 +98,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -205,6 +212,8 @@ class MainActivity : ComponentActivity() {
         val snackbarHostState = remember { SnackbarHostState() }
 
         var trips by remember { mutableStateOf(emptyList<Trip>()) }
+        var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+        var isRefreshingStatus by remember { mutableStateOf(false) }
         var isSyncingMail by remember { mutableStateOf(false) }
         var isReadingSms by remember { mutableStateOf(false) }
         var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -228,6 +237,10 @@ class MainActivity : ComponentActivity() {
         // Bind onResume callback to automatically reactivate island after granting permission
         val activity = context as? MainActivity
         activity?.onResumeCallback = {
+            currentTime = System.currentTimeMillis()
+            trips = db.getAllTrips()
+            LiveIslandScheduler.scheduleAutoLaunch(context)
+            TripRefresh.enqueue(context)
             isIslandRunning = LiveIslandService.isServiceRunning
             if (!isIslandRunning) {
                 activeIslandOrderNo = null
@@ -237,11 +250,11 @@ class MainActivity : ComponentActivity() {
             val pending = pendingIslandOrderNo
             if (pending != null && IslandPermissionHelper.hasOverlayPermission(context)) {
                 pendingIslandOrderNo = null
-                LiveIslandService.start(context, pending)
-                isIslandRunning = true
+                val started = LiveIslandService.start(context, pending)
+                isIslandRunning = started
                 activeIslandOrderNo = pending
                 scope.launch {
-                    snackbarHostState.showSnackbar("已开启灵动胶囊，实时显示发车倒计时与检票口")
+                    snackbarHostState.showSnackbar(if (started) "灵动岛启动请求已发送" else db.getSetting("island_start_status"))
                 }
             }
         }
@@ -259,6 +272,43 @@ class MainActivity : ComponentActivity() {
                 LiveIslandService.update(context)
             }
             LiveIslandScheduler.scheduleAutoLaunch(context)
+            team.shiro.railwidget.widget.TripStateScheduler.schedule(context)
+        }
+
+        DisposableEffect(context) {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: android.content.Context, intent: Intent) {
+                    trips = db.getAllTrips()
+                    currentTime = System.currentTimeMillis()
+                    isIslandRunning = LiveIslandService.isServiceRunning
+                    activeIslandOrderNo = LiveIslandService.currentOrderNo
+                }
+            }
+            ContextCompat.registerReceiver(context, receiver, IntentFilter(TripRefresh.ACTION_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+            onDispose { context.unregisterReceiver(receiver); activity?.onResumeCallback = null }
+        }
+        LaunchedEffect(Unit) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    currentTime = System.currentTimeMillis()
+                    isIslandRunning = LiveIslandService.isServiceRunning
+                    activeIslandOrderNo = LiveIslandService.currentOrderNo
+                    delay(1000L)
+                }
+            }
+        }
+        fun refreshStatus() {
+            if (isRefreshingStatus) return
+            currentTime = System.currentTimeMillis()
+            trips = db.getAllTrips()
+            TripWidgetRenderer.updateAllWidgets(context)
+            isRefreshingStatus = true
+            scope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) { TripRefresh.refresh(context, force = true) }
+                    snackbarHostState.showSnackbar(result.message)
+                } finally { isRefreshingStatus = false }
+            }
         }
 
         var isAutoLaunchOn by remember { mutableStateOf(LiveIslandScheduler.isAutoLaunchEnabled(context)) }
@@ -286,8 +336,8 @@ class MainActivity : ComponentActivity() {
                     pendingIslandOrderNo = orderNo
                     showIslandPermissionDialog = true
                 } else {
-                    LiveIslandService.start(context, orderNo)
-                    isIslandRunning = true
+                    val started = LiveIslandService.start(context, orderNo)
+                    isIslandRunning = started
                     activeIslandOrderNo = orderNo
                     scope.launch {
                         val isPastTrip = targetTrip?.let { it.getStage() == TripStage.COMPLETED } ?: false
@@ -296,7 +346,7 @@ class MainActivity : ComponentActivity() {
                         } else {
                             "已开启灵动胶囊，实时显示发车倒计时与检票口"
                         }
-                        snackbarHostState.showSnackbar(tip)
+                        snackbarHostState.showSnackbar(if (started) tip else db.getSetting("island_start_status", "灵动岛启动失败"))
                     }
                 }
             }
@@ -304,7 +354,7 @@ class MainActivity : ComponentActivity() {
 
         fun updateTripGate(orderNo: String, newGate: String) {
             val existing = trips.find { it.orderNo == orderNo } ?: return
-            val updated = existing.copy(ticketGate = newGate)
+            val updated = existing.copy(ticketGate = newGate, ticketGateManual = newGate.isNotBlank())
             db.insertOrUpdateTrip(updated)
             reloadTrips()
             scope.launch {
@@ -313,25 +363,13 @@ class MainActivity : ComponentActivity() {
         }
 
         fun refreshTripTimetable(trip: Trip) {
+            if (isRefreshingStatus) return
+            isRefreshingStatus = true
             scope.launch {
-                snackbarHostState.showSnackbar("正在查询 ${trip.trainCode} 沿途时刻表与检票口...")
-                val enriched = withContext(Dispatchers.IO) {
-                    try {
-                        RailwayApiService.enrichTrip(trip)
-                    } catch (_: Exception) {
-                        trip
-                    }
-                }
-                db.insertOrUpdateTrip(enriched)
-                reloadTrips()
-                val gateMsg = if (enriched.ticketGate.isNotBlank()) "，检票口: ${enriched.ticketGate}" else ""
-                if (enriched.stops.isNotEmpty()) {
-                    snackbarHostState.showSnackbar("已同步 ${trip.trainCode}$gateMsg，共 ${enriched.stops.size} 站时刻")
-                } else if (enriched.ticketGate.isNotBlank()) {
-                    snackbarHostState.showSnackbar("已同步 ${trip.trainCode} 检票口: ${enriched.ticketGate}")
-                } else {
-                    snackbarHostState.showSnackbar("未能获取到 ${trip.trainCode} 实时信息（可能车次暂未开售或已停运）")
-                }
+                try {
+                    val result = withContext(Dispatchers.IO) { TripRefresh.refresh(context, trip.orderNo, force = true) }
+                    snackbarHostState.showSnackbar(result.message)
+                } finally { isRefreshingStatus = false }
             }
         }
 
@@ -465,8 +503,8 @@ class MainActivity : ComponentActivity() {
         }
 
         // 行程三分类 (remember 记忆化，彻底杜绝无谓的重复耗时计算)
-        val (upcomingTrips, inTransitTrips, completedTrips) = remember(trips) {
-            val now = System.currentTimeMillis()
+        val (upcomingTrips, inTransitTrips, completedTrips) = remember(trips, currentTime) {
+            val now = currentTime
             val upcoming = trips.filter { it.getStage(now) == TripStage.UPCOMING && !it.isArchived }
                 .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
             val inTransit = trips.filter { it.getStage(now) == TripStage.IN_TRANSIT && !it.isArchived }
@@ -499,6 +537,10 @@ class MainActivity : ComponentActivity() {
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
                         actions = {
+                            IconButton(onClick = { refreshStatus() }, enabled = !isRefreshingStatus) {
+                                Icon(Icons.Default.Refresh, contentDescription = "刷新行程状态",
+                                    tint = if (isRefreshingStatus) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                            }
                             val spinAngle = if (isSyncingMail) {
                                 val infiniteTransition = rememberInfiniteTransition(label = "mailSyncRotation")
                                 infiniteTransition.animateFloat(
@@ -529,7 +571,7 @@ class MainActivity : ComponentActivity() {
                                 enabled = !isSyncingMail
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Refresh,
+                                    imageVector = Icons.Default.Email,
                                     contentDescription = "同步邮箱",
                                     tint = if (isSyncingMail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                     modifier = if (isSyncingMail) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
@@ -692,6 +734,7 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
                                     )
                                     HeroTripCard(
+                                            now = currentTime,
                                         trip = upcomingTrips.first(),
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == upcomingTrips.first().orderNo,
                                         isAutoLaunchActive = isAutoLaunchOn,
@@ -728,6 +771,7 @@ class MainActivity : ComponentActivity() {
                                     items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
                                         val isNextTransfer = db.findPreviousTransferTrip(trip) != null
                                         HeroTripCard(
+                                            now = currentTime,
                                             trip = trip,
                                             isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                             isAutoLaunchActive = isAutoLaunchOn && isNextTransfer && LiveIslandScheduler.isTransferHandoverEnabled(context),
@@ -785,6 +829,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 items(inTransitTrips, key = { it.orderNo }) { trip ->
                                     HeroTripCard(
+                                            now = currentTime,
                                         trip = trip,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                         onToggleIsland = {
@@ -836,6 +881,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 items(completedTrips, key = { it.orderNo }) { trip ->
                                     HeroTripCard(
+                                            now = currentTime,
                                         trip = trip,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                         onToggleIsland = {
@@ -1342,3 +1388,4 @@ private fun WidgetPinGuideCard(
         }
     }
 }
+

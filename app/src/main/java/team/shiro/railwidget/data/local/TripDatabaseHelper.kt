@@ -13,7 +13,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
 
     companion object {
         private const val DB_NAME = "rail_widget.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
 
         private const val TABLE_TRIPS = "trips"
         private const val TABLE_SETTINGS = "settings"
@@ -52,6 +52,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
                 detail_url TEXT,
                 raw_source TEXT,
                 updated_at INTEGER,
+                metadata_json TEXT,
                 is_archived INTEGER DEFAULT 0
             )
             """.trimIndent()
@@ -68,6 +69,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 3) db.execSQL("ALTER TABLE $TABLE_TRIPS ADD COLUMN metadata_json TEXT")
         if (oldVersion < 2) {
             try {
                 db.execSQL("ALTER TABLE $TABLE_TRIPS ADD COLUMN detail_url TEXT")
@@ -75,7 +77,9 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         }
     }
 
+    @Synchronized
     fun insertOrUpdateTrip(trip: Trip) {
+        val existing = getTrip(trip.orderNo)
         val db = writableDatabase
         val values = ContentValues().apply {
             put("order_no", trip.orderNo)
@@ -94,7 +98,9 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             put("ticket_type", trip.ticketType)
             put("price", trip.price)
             put("stopover_time", trip.stopoverTime)
-            put("stops_json", serializeStops(trip.stops))
+            put("stops_json", serializeStops(trip.stops.ifEmpty { existing?.stops ?: emptyList() }))
+            val metadataTrip = if (trip.dataCheckedAt == 0L && !trip.ticketGateManual && existing != null) existing else trip
+            put("metadata_json", metadata(metadataTrip).toString())
             put("detail_url", trip.detailUrl)
             put("raw_source", trip.rawSource)
             put("updated_at", trip.updatedAt)
@@ -237,6 +243,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
     }
 
     private fun cursorToTrip(c: android.database.Cursor): Trip {
+        val meta = runCatching { JSONObject(c.getString(c.getColumnIndexOrThrow("metadata_json")) ?: "{}") }.getOrDefault(JSONObject())
         return Trip(
             orderNo = c.getString(c.getColumnIndexOrThrow("order_no")),
             passengerName = c.getString(c.getColumnIndexOrThrow("passenger_name")),
@@ -258,8 +265,25 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             detailUrl = if (c.getColumnIndex("detail_url") != -1) c.getString(c.getColumnIndexOrThrow("detail_url")) ?: "" else "",
             rawSource = c.getString(c.getColumnIndexOrThrow("raw_source")) ?: "LOCAL",
             updatedAt = c.getLong(c.getColumnIndexOrThrow("updated_at")),
-            isArchived = c.getInt(c.getColumnIndexOrThrow("is_archived")) == 1
+            isArchived = c.getInt(c.getColumnIndexOrThrow("is_archived")) == 1,
+            trainModel = meta.optString("trainModel"), railwayBureau = meta.optString("railwayBureau"),
+            diningCar = meta.optString("diningCar"), platform = meta.optString("platform"),
+            totalMileageKm = meta.number("totalMileageKm"), rideMileageKm = meta.number("rideMileageKm"),
+            arrivalDayOffset = meta.number("arrivalDayOffset")?.toInt(),
+            dataSource = meta.optString("dataSource"), dataCheckedAt = meta.optLong("dataCheckedAt"),
+            liveCheckedAt = meta.optLong("liveCheckedAt"), ticketGateManual = meta.optBoolean("ticketGateManual")
         )
+    }
+
+    private fun JSONObject.number(key: String): Double? = if (isNull(key)) null else optDouble(key).takeIf { it.isFinite() }
+
+    private fun metadata(trip: Trip) = JSONObject().apply {
+        put("trainModel", trip.trainModel); put("railwayBureau", trip.railwayBureau)
+        put("diningCar", trip.diningCar); put("platform", trip.platform)
+        put("totalMileageKm", trip.totalMileageKm); put("rideMileageKm", trip.rideMileageKm)
+        put("arrivalDayOffset", trip.arrivalDayOffset); put("dataSource", trip.dataSource)
+        put("dataCheckedAt", trip.dataCheckedAt); put("liveCheckedAt", trip.liveCheckedAt)
+        put("ticketGateManual", trip.ticketGateManual)
     }
 
     private fun serializeStops(stops: List<StopInfo>): String {
@@ -271,6 +295,9 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
                 put("arr", s.arriveTime)
                 put("start", s.startTime)
                 put("stopover", s.stopoverTime)
+                put("lineMileage", s.lineMileage); put("mileageKm", s.mileageKm); put("platform", s.platform); put("ticketGate", s.ticketGate)
+                put("arrivalDay", s.arrivalDay); put("departureDay", s.departureDay)
+                put("actualArrival", s.actualArrival); put("actualDeparture", s.actualDeparture)
             }
             array.put(obj)
         }
@@ -290,7 +317,10 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
                         stationName = o.optString("name"),
                         arriveTime = o.optString("arr"),
                         startTime = o.optString("start"),
-                        stopoverTime = o.optString("stopover")
+                        stopoverTime = o.optString("stopover"),
+                        lineMileage = o.optString("lineMileage"), mileageKm = o.number("mileageKm"), platform = o.optString("platform"), ticketGate = o.optString("ticketGate"),
+                        arrivalDay = o.number("arrivalDay")?.toInt(), departureDay = o.number("departureDay")?.toInt(),
+                        actualArrival = o.number("actualArrival")?.toLong(), actualDeparture = o.number("actualDeparture")?.toLong()
                     )
                 )
             }
@@ -298,3 +328,4 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         return list
     }
 }
+

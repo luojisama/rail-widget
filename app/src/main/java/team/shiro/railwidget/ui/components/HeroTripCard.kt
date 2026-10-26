@@ -81,9 +81,10 @@ fun HeroTripCard(
     isAutoLaunchActive: Boolean = false,
     autoLeadText: String = "",
     onToggleIsland: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    now: Long = System.currentTimeMillis()
 ) {
-    val stage = trip.getStage()
+    val stage = trip.getStage(now)
     val isCompleted = stage == TripStage.COMPLETED
     val isInTransit = stage == TripStage.IN_TRANSIT
     // 历史已结束行程默认折叠表格，避免大表格霸屏；未出行或进行中行程可展开浏览
@@ -203,7 +204,7 @@ fun HeroTripCard(
                 val statusText = when {
                     isCompleted -> "已结束"
                     isInTransit -> "运行中"
-                    else -> trip.computeStatus()
+                    else -> trip.computeStatus(now)
                 }
                 val (statusBg, statusFg) = when (statusText) {
                     "正在检票" -> Pair(Color(0xFFFEF2F2), Color(0xFFDC2626))
@@ -568,9 +569,25 @@ fun HeroTripCard(
                 ) + fadeOut(animationSpec = tween(140))
             ) {
                 Column(modifier = Modifier.padding(top = 6.dp)) {
+                    trip.currentPosition(now)?.let { position ->
+                        Text(position.label(trip), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    Text("车型：${trip.trainModel.ifBlank { "暂无" }} · 担当铁路局：${trip.railwayBureau.ifBlank { "暂无" }}",
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("餐车车厢：${trip.diningCar.ifBlank { "暂无" }} · 站台：${trip.platform.ifBlank { "暂无" }}",
+                        style = MaterialTheme.typography.bodySmall)
+                    Text("列车全程里程：${trip.totalMileageKm?.let { "$it km" } ?: "暂无"} · 本次乘坐里程：${trip.rideMileageKm?.let { "$it km" } ?: "暂无"}",
+                        style = MaterialTheme.typography.bodySmall)
+                    if (trip.dataCheckedAt > 0) {
+                        val checked = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).apply { timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai") }.format(java.util.Date(trip.dataCheckedAt))
+                        Text("${trip.dataSource} · 查询于 $checked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    }
+                    Spacer(Modifier.height(8.dp))
                     TimetableTable(
                         trip = trip,
-                        isCompleted = isCompleted
+                        isCompleted = isCompleted,
+                        now = now
                     )
 
                     // 若尚未联网补齐多站时刻表，提供一键补全按钮
@@ -795,7 +812,8 @@ fun HeroTripCard(
 @Composable
 fun TimetableTable(
     trip: Trip,
-    isCompleted: Boolean
+    isCompleted: Boolean,
+    now: Long = System.currentTimeMillis()
 ) {
     // 边框容器
     Surface(
@@ -901,13 +919,16 @@ fun TimetableTable(
                 }
             }
 
+            val position = trip.currentPosition(now)
             stopList.forEachIndexed { index, stop ->
                 val isBoarding = index == boardingIndex
                 val isAlighting = index == alightingIndex
-                val isKeyStop = isBoarding || isAlighting
+                val isCurrent = position?.index == index && position.atStation
+                val isKeyStop = isBoarding || isAlighting || isCurrent
                 val isInRideSpan = boardingIndex in 0 until alightingIndex && index in (boardingIndex + 1) until alightingIndex
 
                 val rowBg = when {
+                    isCurrent -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
                     isKeyStop && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
                     isInRideSpan && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.07f)
                     index % 2 == 1 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
@@ -938,7 +959,7 @@ fun TimetableTable(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = stop.stationName,
+                            text = stop.stationName + if (isCurrent) " · 当前" else "",
                             fontSize = 13.sp,
                             fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Medium,
                             color = when {
@@ -1032,6 +1053,11 @@ fun TimetableTable(
                     )
                 }
 
+                if (stop.mileageKm != null || stop.lineMileage.isNotBlank()) {
+                    val mileage = stop.mileageKm?.let { "距列车始发站 $it km" } ?: "线路里程标（非列车累计里程）：${stop.lineMileage}"
+                    Text(mileage, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                }
                 if (index < stopList.size - 1) {
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
@@ -1098,3 +1124,4 @@ fun getTrainCategory(trainCode: String): String {
         else -> "列车"
     }
 }
+

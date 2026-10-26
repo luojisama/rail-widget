@@ -33,6 +33,7 @@ class LiveIslandService : Service() {
     private var islandView: LiveIslandView? = null
     private val handler = Handler(Looper.getMainLooper())
     private var currentTrip: Trip? = null
+    private var lastRefreshRequest = 0L
 
     private val tickerRunnable = Runnable {
         refreshTripState()
@@ -40,7 +41,6 @@ class LiveIslandService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        isServiceRunning = true
         createNotificationChannel()
     }
 
@@ -49,30 +49,46 @@ class LiveIslandService : Service() {
 
         when (action) {
             ACTION_STOP -> {
+                TripDatabaseHelper.getInstance(this).setSetting("island_dismissed_order", currentOrderNo.orEmpty())
+                TripDatabaseHelper.getInstance(this).setSetting("island_active_order", "")
                 stopSelf()
                 return START_NOT_STICKY
             }
             ACTION_START, ACTION_UPDATE -> {
                 val orderNo = intent?.getStringExtra(EXTRA_ORDER_NO) ?: intent?.getStringExtra("order_no")
-                loadTrip(orderNo)
+                val db = TripDatabaseHelper.getInstance(this)
+                val restoredOrder = orderNo ?: currentOrderNo ?: db.getSetting("island_active_order").takeIf { it.isNotBlank() }
+                if (intent == null && restoredOrder == null) { stopSelf(); return START_NOT_STICKY }
+                loadTrip(restoredOrder)
+                if (action == ACTION_START && intent != null) db.setSetting("island_automatic", if (intent.getBooleanExtra("automatic", false)) "1" else "0")
 
-                val trip = currentTrip
+                val trip = currentTrip?.takeUnless { it.isArchived }
                 if (trip != null) {
-                    val notification = buildForegroundNotification(trip)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-                    } else {
-                        startForeground(NOTIFICATION_ID, notification)
-                    }
-
-                    if (IslandPermissionHelper.hasOverlayPermission(this)) {
-                        if (islandView == null) {
-                            islandView = LiveIslandView(this)
-                            islandView?.attach()
+                    try {
+                        val notification = buildForegroundNotification(trip)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                        } else {
+                            startForeground(NOTIFICATION_ID, notification)
                         }
-                        islandView?.updateTrip(trip)
-                    }
 
+                        isServiceRunning = true
+                        db.setSetting("island_active_order", trip.orderNo)
+                        db.setSetting("island_start_status", "灵动岛运行中")
+                        if (IslandPermissionHelper.hasOverlayPermission(this)) {
+                            if (islandView == null) {
+                                islandView = LiveIslandView(this)
+                                islandView?.attach()
+                            }
+                            islandView?.updateTrip(trip)
+                        }
+
+                    } catch (error: RuntimeException) {
+                        db.setSetting("island_start_status", "灵动岛启动失败：${error.javaClass.simpleName}")
+                        android.util.Log.w("LiveIslandService", "Unable to attach island", error)
+                        stopSelf()
+                        return START_NOT_STICKY
+                    }
                     refreshTripState()
                 } else {
                     stopSelf()
@@ -86,7 +102,7 @@ class LiveIslandService : Service() {
     private fun loadTrip(orderNo: String?) {
         val db = TripDatabaseHelper.getInstance(this)
         val trip = if (!orderNo.isNullOrBlank()) {
-            db.getTrip(orderNo) ?: db.getLatestUpcomingTrip()
+            db.getTrip(orderNo)
         } else {
             db.getLatestUpcomingTrip()
         }
@@ -100,7 +116,7 @@ class LiveIslandService : Service() {
             return
         }
         val db = TripDatabaseHelper.getInstance(this)
-        val refreshed = db.getTrip(trip.orderNo) ?: trip
+        val refreshed = db.getTrip(trip.orderNo)?.takeUnless { it.isArchived } ?: run { stopSelf(); return }
         currentTrip = refreshed
         currentOrderNo = refreshed.orderNo
 
@@ -145,8 +161,7 @@ class LiveIslandService : Service() {
                     set(Calendar.MILLISECOND, 0)
                 }
                 val delay = targetCal.timeInMillis - nowCal.timeInMillis
-                val safeDelay = if (delay > 0) delay else 3600_000L
-                handler.postDelayed(tickerRunnable, safeDelay)
+                handler.postDelayed(tickerRunnable, minOf(60_000L, delay.coerceAtLeast(1000L)))
             } catch (_: Exception) {
                 handler.postDelayed(tickerRunnable, 3600_000L) // 兜底 1 小时
             }
@@ -176,7 +191,7 @@ class LiveIslandService : Service() {
 
                 // 若第二程尚未获取到检票口，立即触发异步探测
                 if (nextTransfer.getCleanTicketGate().isBlank() || nextTransfer.getCleanTicketGate() == "暂无") {
-                    checkAndFetchTicketGateAsync(nextTransfer)
+                    team.shiro.railwidget.sync.TripRefresh.enqueue(this)
                 }
 
                 // 立即按第二程发车时间开始下一阶段调度
@@ -199,6 +214,9 @@ class LiveIslandService : Service() {
                         }
                     }, remaining)
                     return
+                } else if (elapsedSinceArrival >= bufferMillis && db.getSetting("island_automatic") == "1") {
+                    stopSelf()
+                    return
                 } else if (elapsedSinceArrival >= bufferMillis) {
                     // 启动时就已经到达超过 15 分钟（用户手动开启查看已结束/历史车票）：
                     // 严禁在此处立即 stopSelf() 闪退秒杀！正常维持已到达状态展示，由用户随时手动关闭
@@ -212,68 +230,12 @@ class LiveIslandService : Service() {
             }
         }
 
-        // 3. 发车日当天：检查并拉取 12306 大屏检票口
-        val gate = trip.getCleanTicketGate()
-        val hasGate = gate.isNotBlank() && gate != "暂无"
-        if (!hasGate) {
-            // 当天未出检票口，立即后台探测拉取，并设置 15 分钟重试
-            checkAndFetchTicketGateAsync(trip)
-            handler.postDelayed(tickerRunnable, 15 * 60 * 1000L)
-        } else {
-            // 检票口已公布并缓存，只需 60 秒刷新一次倒计时与运行状态
-            handler.postDelayed(tickerRunnable, 60_000L)
+        // Local countdown refresh is independent of online fetch success or gate availability.
+        if (System.currentTimeMillis() - lastRefreshRequest >= 300_000L) {
+            lastRefreshRequest = System.currentTimeMillis()
+            team.shiro.railwidget.sync.TripRefresh.enqueue(this)
         }
-    }
-
-    @Volatile
-    private var isFetchingGate = false
-
-    /**
-     * 到发车日期自动异步拉取 12306 官方最新车站大屏检票口并持久化缓存至 SQLite 数据库
-     */
-    private fun checkAndFetchTicketGateAsync(trip: Trip) {
-        if (isFetchingGate) return
-        val shanghaiTz = TimeZone.getTimeZone("Asia/Shanghai")
-        val todayShanghai = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).apply {
-            timeZone = shanghaiTz
-        }.format(Date())
-
-        // 严格检验：必须到达出发日当天
-        if (trip.departureDate.isNotBlank() && trip.departureDate <= todayShanghai) {
-            isFetchingGate = true
-            Thread {
-                try {
-                    val enriched = team.shiro.railwidget.data.api.RailwayApiService.enrichTrip(trip)
-                    val newGate = enriched.getCleanTicketGate()
-                    val oldGate = trip.getCleanTicketGate()
-                    if (newGate.isNotBlank() && newGate != "暂无" && newGate != oldGate) {
-                        val db = TripDatabaseHelper.getInstance(this)
-                        db.insertOrUpdateTrip(enriched)
-                        handler.post {
-                            if (currentTrip?.orderNo == enriched.orderNo) {
-                                currentTrip = enriched
-                                islandView?.updateTrip(enriched)
-                                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                                nm.notify(NOTIFICATION_ID, buildForegroundNotification(enriched))
-
-                                // 同步广播通知桌面小组件局部更新
-                                val widgetIntent = Intent("team.shiro.railwidget.action.REFRESH_WIDGET").apply {
-                                    setPackage(packageName)
-                                }
-                                sendBroadcast(widgetIntent)
-
-                                // 检票口更新成功，立即触发调度，由 15 分钟探测模式切入 60 秒倒计时刷新模式
-                                scheduleNextCheck(enriched)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                } finally {
-                    isFetchingGate = false
-                }
-            }.start()
-        }
+        handler.postDelayed(tickerRunnable, 60_000L)
     }
 
     private fun buildForegroundNotification(trip: Trip): Notification {
@@ -301,7 +263,7 @@ class LiveIslandService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("${trip.trainCode} · $gateText")
-            .setContentText("${trip.departureStation} → ${trip.arrivalStation} | $seatText")
+            .setContentText(trip.currentPosition()?.label(trip) ?: "${trip.departureStation} → ${trip.arrivalStation} | $seatText")
             .setContentIntent(pendingOpen)
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -343,7 +305,7 @@ class LiveIslandService : Service() {
         super.onDestroy()
         isServiceRunning = false
         currentOrderNo = null
-        handler.removeCallbacks(tickerRunnable)
+        handler.removeCallbacksAndMessages(null)
         islandView?.detach()
         islandView = null
     }
@@ -364,17 +326,26 @@ class LiveIslandService : Service() {
         var currentOrderNo: String? = null
             private set
 
-        fun start(context: Context, orderNo: String? = null) {
+        private var lastStartAt = 0L
+
+        fun start(context: Context, orderNo: String? = null, automatic: Boolean = false): Boolean {
+            val now = System.currentTimeMillis()
+            if (!isServiceRunning && now - lastStartAt < 3000L) return true
+            val db = TripDatabaseHelper.getInstance(context)
+            if (!automatic) db.setSetting("island_dismissed_order", "")
             val intent = Intent(context, LiveIslandService::class.java).apply {
                 action = ACTION_START
-                if (!orderNo.isNullOrBlank()) {
-                    putExtra(EXTRA_ORDER_NO, orderNo)
-                }
+                putExtra("automatic", automatic)
+                if (!orderNo.isNullOrBlank()) putExtra(EXTRA_ORDER_NO, orderNo)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            return try {
                 context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+                lastStartAt = now
+                true
+            } catch (error: RuntimeException) {
+                db.setSetting("island_start_status", "启动受限：${error.javaClass.simpleName}，请检查后台及自启动权限")
+                android.util.Log.w("LiveIslandService", "Unable to start island", error)
+                false
             }
         }
 
@@ -386,14 +357,14 @@ class LiveIslandService : Service() {
                     putExtra(EXTRA_ORDER_NO, orderNo)
                 }
             }
-            context.startService(intent)
+            runCatching { context.startService(intent) }
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, LiveIslandService::class.java).apply {
-                action = ACTION_STOP
-            }
-            context.startService(intent)
+            val db = TripDatabaseHelper.getInstance(context)
+            db.setSetting("island_dismissed_order", currentOrderNo ?: db.getSetting("island_active_order"))
+            db.setSetting("island_active_order", "")
+            context.stopService(Intent(context, LiveIslandService::class.java))
         }
     }
 }
