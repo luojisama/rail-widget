@@ -1,0 +1,48 @@
+name: Diagnose Android 13 startup
+on:
+  pull_request:
+    branches: [master]
+    paths: ['.github/workflows/startup-check.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  startup:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.0-APK
+          path: apk
+          run-id: 40307777296
+          github-token: ${{ github.token }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch released APK on Android 13
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          script: |
+            adb install apk/RailCard-v1.3.0.apk
+            adb logcat -c
+            adb shell am start -W -n team.shiro.railwidget/.ui.MainActivity
+            sleep 10
+            adb logcat -d -b crash > startup-crash.txt
+            adb logcat -d > startup-logcat.txt
+            cat startup-crash.txt
+            adb shell pidof team.shiro.railwidget
+            ! grep -q 'FATAL EXCEPTION' startup-crash.txt
+      - name: Upload startup logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android13-Startup-Logs
+          path: startup-*.txt
