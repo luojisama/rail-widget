@@ -144,6 +144,8 @@ fun SettingsDialog(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (selectedCategoryTab == 0) {
+                    IslandPermissions()
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
                     // TAB 0: 灵动岛自动化
                     // 1. 自动拉起总开关
                     Row(
@@ -375,3 +377,4 @@ fun SettingsDialog(
         }
     )
 }
+

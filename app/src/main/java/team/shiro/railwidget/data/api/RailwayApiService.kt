@@ -17,6 +17,7 @@ object RailwayApiService {
     private val client = OkHttpClient.Builder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(12, TimeUnit.SECONDS)
         .build()
 
     private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
@@ -26,101 +27,55 @@ object RailwayApiService {
      * and official 12306 check-in ticket gate by querying 12306 public APIs.
      */
     fun enrichTrip(trip: Trip): Trip {
-        try {
-            val todayStandard = getTodayShanghai()
-            val todayCompact = todayStandard.replace("-", "")
-
-            val dateFormatted = trip.departureDate.replace("-", "") // YYYYMMDD
-            var trainNo = queryTrainNo(trip.trainCode, dateFormatted) ?: trip.trainNo
-
-            // 针对历史行程（12306 仅提供近期时刻表），自动回退以今日为基准查询 trainNo
-            if (trainNo.isBlank() && dateFormatted != todayCompact) {
-                trainNo = queryTrainNo(trip.trainCode, todayCompact) ?: ""
+        val now = System.currentTimeMillis()
+        val trainNo = queryTrainNo(trip.trainCode, trip.departureDate.replace("-", "")) ?: trip.trainNo
+        var result = trip
+        if (trainNo.isNotBlank()) {
+            val stops = queryTimetable(trainNo, trip.departureDate, trip.departureStation, trip.arrivalStation)
+            val dep = stops.indexOfFirst { cleanStation(it.stationName) == cleanStation(trip.departureStation) }
+            val effectiveArrival = if (trip.arrivalStation.isBlank() || trip.arrivalStation in listOf("到达站", "终点站"))
+                stops.lastOrNull()?.stationName ?: trip.arrivalStation else trip.arrivalStation
+            val arr = stops.indices.firstOrNull { it > dep && cleanStation(stops[it].stationName) == cleanStation(effectiveArrival) }
+            if (dep >= 0 && arr != null) {
+                // Preserve optional live fields when a timetable response contains only static data.
+                val merged = stops.map { stop ->
+                    val old = trip.stops.find { it.stationNo == stop.stationNo && it.stationName == stop.stationName }
+                    if (old == null) stop else old.copy(arriveTime = stop.arriveTime, startTime = stop.startTime,
+                        stopoverTime = stop.stopoverTime, arrivalDay = stop.arrivalDay, departureDay = stop.departureDay)
+                }
+                result = trip.copy(trainNo = trainNo, stops = merged, arrivalStation = effectiveArrival,
+                    departureTime = stops[dep].startTime.takeIf { it.matches(Regex("\\d{2}:\\d{2}")) } ?: trip.departureTime,
+                    arrivalTime = stops[arr].arriveTime.takeIf { it.matches(Regex("\\d{2}:\\d{2}")) } ?: trip.arrivalTime,
+                    dataCheckedAt = now, dataSource = "12306时刻表")
             }
-
-            if (trainNo.isBlank()) {
-                return trip
+            if (!trip.ticketGateManual) {
+                val gate = queryTicketGate(trip.trainCode, trainNo, trip.departureStation, trip.departureDate)
+                if (!gate.isNullOrBlank()) result = result.copy(ticketGate = gate, dataCheckedAt = now)
             }
-
-            val targetDepStation = trip.departureStation.replace("站", "").trim()
-            val queryDateForGate = if (trip.departureDate.isNotBlank()) trip.departureDate else todayStandard
-            var fetchedGate = queryTicketGate(trip.trainCode, trainNo, targetDepStation, queryDateForGate)
-            if (fetchedGate.isNullOrBlank() && queryDateForGate != todayStandard) {
-                fetchedGate = queryTicketGate(trip.trainCode, trainNo, targetDepStation, todayStandard)
-            }
-            val effectiveGate = if (!fetchedGate.isNullOrBlank()) fetchedGate else trip.ticketGate
-
-            // 途经时刻表查询：若历史日期查询返回空，回退以今日基准获取经停站
-            var stops = queryTimetable(trainNo, trip.departureDate)
-            if (stops.isEmpty() && trip.departureDate != todayStandard) {
-                stops = queryTimetable(trainNo, todayStandard)
-            }
-            if (stops.isEmpty()) {
-                return trip.copy(trainNo = trainNo, ticketGate = effectiveGate)
-            }
-
-            // 在时刻表经停站中匹配出发站
-            val matchedDepStop = stops.find {
-                it.stationName.replace("站", "").trim().equals(targetDepStation, ignoreCase = true)
-            }
-
-            val isArrStationPlaceholder = trip.arrivalStation.isBlank() ||
-                    trip.arrivalStation == "到达站" ||
-                    trip.arrivalStation == "终点站" ||
-                    trip.arrivalStation.contains("12306")
-
-            val effectiveArrStation = if (isArrStationPlaceholder && stops.isNotEmpty()) {
-                stops.last().stationName
-            } else {
-                trip.arrivalStation
-            }
-
-            val targetArrStation = effectiveArrStation.replace("站", "").trim()
-            val depIndex = if (matchedDepStop != null) stops.indexOf(matchedDepStop) else -1
-            val matchedStop = if (depIndex >= 0 && depIndex < stops.size - 1) {
-                stops.subList(depIndex + 1, stops.size).find {
-                    it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
-                } ?: stops.find {
-                    it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
-                } ?: stops.lastOrNull()
-            } else {
-                stops.find {
-                    it.stationName.replace("站", "").trim().equals(targetArrStation, ignoreCase = true)
-                } ?: stops.lastOrNull()
-            }
-
-            val actualDepTime = if (matchedDepStop != null && matchedDepStop.startTime != "----") {
-                matchedDepStop.startTime
-            } else if (trip.departureTime.isNotBlank() && trip.departureTime != "00:00") {
-                trip.departureTime
-            } else {
-                matchedDepStop?.arriveTime ?: trip.departureTime
-            }
-
-            val actualArrTime = if (matchedStop != null && matchedStop.arriveTime != "----") {
-                matchedStop.arriveTime
-            } else if (matchedStop != null && matchedStop.startTime != "----") {
-                matchedStop.startTime
-            } else {
-                trip.arrivalTime
-            }
-
-            val stopover = matchedStop?.stopoverTime ?: trip.stopoverTime
-
-            return trip.copy(
-                trainNo = trainNo,
-                departureStation = matchedDepStop?.stationName ?: trip.departureStation,
-                arrivalStation = effectiveArrStation,
-                departureTime = actualDepTime,
-                arrivalTime = actualArrTime,
-                ticketGate = effectiveGate,
-                stopoverTime = stopover,
-                stops = stops
-            )
-        } catch (_: Exception) {
-            return trip
         }
+        // Details APIs use the train origin date, which can precede a mid-route ticket's date.
+        val originDate = team.shiro.railwidget.data.model.TripTimeline.originDate(result)
+        runCatching {
+            val form = FormBody.Builder().add("trainCode", trip.trainCode).add("startDay", originDate.replace("-", "")).build()
+            val request = Request.Builder().url("https://mobile.12306.cn/wxxcx/wechat/main/travelServiceQrcodeTrainInfo")
+                .header("User-Agent", USER_AGENT).post(form).build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) result = TrainDetails.applyInfo(result, JSONObject(response.body?.string() ?: "{}"), now)
+            }
+        }
+        runCatching {
+            val url = okhttp3.HttpUrl.Builder().scheme("https").host("mobile.12306.cn")
+                .encodedPath("/wxxcx/openplatform-inner/miniprogram/wifiapps/appFrontEnd/v2/lounge/open-smooth-common/trainStyleBatch/getCarDetail")
+                .addQueryParameter("trainCode", trip.trainCode).addQueryParameter("runningDay", originDate.replace("-", ""))
+                .addQueryParameter("reqType", "form").addQueryParameter("carCode", trip.trainCode).build()
+            client.newCall(Request.Builder().url(url).header("User-Agent", USER_AGENT).build()).execute().use { response ->
+                if (response.isSuccessful) result = TrainDetails.applyStyle(result, JSONObject(response.body?.string() ?: "{}"), now)
+            }
+        }
+        return result
     }
+
+    private fun cleanStation(value: String) = value.trim().removeSuffix("站")
 
     /**
      * Step 1: Query 12306 train search to resolve internal train_no (e.g. "800000C3150E" for C315)
@@ -142,14 +97,11 @@ object RailwayApiService {
                 for (i in 0 until dataArray.length()) {
                     val item = dataArray.getJSONObject(i)
                     val code = item.optString("station_train_code")
-                    if (code.equals(trainCode, ignoreCase = true)) {
+                    if (code.split('/').any { it.equals(trainCode, ignoreCase = true) }) {
                         return item.optString("train_no")
                     }
                 }
-                // If exact match not found, take first with code starting with trainCode
-                if (dataArray.length() > 0) {
-                    dataArray.getJSONObject(0).optString("train_no")
-                } else null
+                null
             }
         } catch (_: Exception) {
             null
@@ -159,10 +111,15 @@ object RailwayApiService {
     /**
      * Step 2: Query 12306 full stops schedule with train_no and date (YYYY-MM-DD)
      */
-    fun queryTimetable(trainNo: String, dateStandard: String): List<StopInfo> {
+    fun queryTimetable(trainNo: String, dateStandard: String, fromStation: String = "", toStation: String = ""): List<StopInfo> {
         val stops = mutableListOf<StopInfo>()
         try {
-            val url = "https://kyfw.12306.cn/otn/czxx/queryByTrainNo?train_no=$trainNo&from_station_telecode=KMM&to_station_telecode=ZZM&depart_date=$dateStandard"
+            val stationCodes = stationCodes()
+            val from = stationCodes[cleanStation(fromStation)].orEmpty()
+            val to = stationCodes[cleanStation(toStation)].orEmpty()
+            val url = okhttp3.HttpUrl.Builder().scheme("https").host("kyfw.12306.cn").encodedPath("/otn/czxx/queryByTrainNo")
+                .addQueryParameter("train_no", trainNo).addQueryParameter("from_station_telecode", from)
+                .addQueryParameter("to_station_telecode", to).addQueryParameter("depart_date", dateStandard).build()
             val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", USER_AGENT)
@@ -183,7 +140,9 @@ object RailwayApiService {
                             stationName = s.optString("station_name"),
                             arriveTime = s.optString("arrive_time"),
                             startTime = s.optString("start_time"),
-                            stopoverTime = s.optString("stopover_time")
+                            stopoverTime = s.optString("stopover_time"),
+                            arrivalDay = s.optString("arrive_day_diff").toIntOrNull(),
+                            departureDay = s.optString("start_day_diff").toIntOrNull()
                         )
                     )
                 }
@@ -247,11 +206,6 @@ object RailwayApiService {
             }
 
             telecode = tryResolveTelecode(dateStandard)
-            val todayStandard = getTodayShanghai()
-            if (telecode.isNullOrBlank() && dateStandard != todayStandard) {
-                telecode = tryResolveTelecode(todayStandard)
-            }
-
             if (telecode.isNullOrBlank()) return null
 
             // Step 2: Query ticket check-in gate using telecode
@@ -275,7 +229,7 @@ object RailwayApiService {
                 val json = JSONObject(body)
                 val dataObj = json.optJSONObject("data") ?: return null
                 val rawPlatform = dataObj.optString("trainPlatform", "").trim()
-                if (rawPlatform.isNotBlank()) {
+                if (rawPlatform.contains("检票口")) {
                     return cleanPlatformString(rawPlatform)
                 }
             }
@@ -309,9 +263,19 @@ object RailwayApiService {
             .replace(" ", "/")
     }
 
-    private fun getTodayShanghai(): String {
-        return SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).apply {
-            timeZone = TimeZone.getTimeZone("Asia/Shanghai")
-        }.format(Date())
+    @Volatile private var cachedStationCodes: Map<String, String> = emptyMap()
+    private fun stationCodes(): Map<String, String> {
+        if (cachedStationCodes.isNotEmpty()) return cachedStationCodes
+        return runCatching {
+            val request = Request.Builder().url("https://kyfw.12306.cn/otn/resources/js/framework/station_name.js").build()
+            client.newCall(request).execute().use { response ->
+                check(response.isSuccessful)
+                val text = response.body?.string().orEmpty()
+                text.split('@').mapNotNull { entry ->
+                    val parts = entry.split('|')
+                    if (parts.size >= 3 && parts[2].matches(Regex("[A-Z]{3}"))) cleanStation(parts[1]) to parts[2] else null
+                }.toMap().also { cachedStationCodes = it }
+            }
+        }.getOrDefault(emptyMap())
     }
 }

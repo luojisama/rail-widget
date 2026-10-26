@@ -43,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -58,6 +59,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -76,6 +79,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import team.shiro.railwidget.sync.TripRefresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -87,10 +99,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -126,11 +138,28 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (team.shiro.railwidget.diagnostics.CrashDiagnostics.read(this) != null) {
+            startActivity(Intent(this, team.shiro.railwidget.diagnostics.CrashReportActivity::class.java))
+            finish()
+            return
+        }
         enableEdgeToEdge()
         pendingAction = intent?.action
         setContent {
             RailWidgetTheme {
                 MainScreen()
+            }
+        }
+        window.decorView.post {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    TripRefresh.initialize(applicationContext)
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    team.shiro.railwidget.diagnostics.CrashDiagnostics.record(applicationContext, "BackgroundStartup", error)
+                    android.util.Log.e("RailCardStartup", "Background initialization failed", error)
+                }
             }
         }
     }
@@ -205,12 +234,15 @@ class MainActivity : ComponentActivity() {
         val snackbarHostState = remember { SnackbarHostState() }
 
         var trips by remember { mutableStateOf(emptyList<Trip>()) }
+        var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
+        var isRefreshingStatus by remember { mutableStateOf(false) }
         var isSyncingMail by remember { mutableStateOf(false) }
         var isReadingSms by remember { mutableStateOf(false) }
         var selectedTabIndex by remember { mutableIntStateOf(0) }
 
         var showImportDialog by remember { mutableStateOf(false) }
         var showSettingsDialog by remember { mutableStateOf(false) }
+        var showToolbarMenu by remember { mutableStateOf(false) }
         var showPinBlockedDialog by remember { mutableStateOf(false) }
         var showMiuiSmsPermissionDialog by remember { mutableStateOf(false) }
 
@@ -228,6 +260,10 @@ class MainActivity : ComponentActivity() {
         // Bind onResume callback to automatically reactivate island after granting permission
         val activity = context as? MainActivity
         activity?.onResumeCallback = {
+            currentTime = System.currentTimeMillis()
+            trips = db.getAllTrips()
+            LiveIslandScheduler.scheduleAutoLaunch(context)
+            TripRefresh.enqueue(context)
             isIslandRunning = LiveIslandService.isServiceRunning
             if (!isIslandRunning) {
                 activeIslandOrderNo = null
@@ -237,11 +273,11 @@ class MainActivity : ComponentActivity() {
             val pending = pendingIslandOrderNo
             if (pending != null && IslandPermissionHelper.hasOverlayPermission(context)) {
                 pendingIslandOrderNo = null
-                LiveIslandService.start(context, pending)
-                isIslandRunning = true
+                val started = LiveIslandService.start(context, pending)
+                isIslandRunning = started && LiveIslandService.isServiceRunning
                 activeIslandOrderNo = pending
                 scope.launch {
-                    snackbarHostState.showSnackbar("已开启灵动胶囊，实时显示发车倒计时与检票口")
+                    snackbarHostState.showSnackbar(if (started) "灵动岛启动请求已发送" else db.getSetting("island_start_status"))
                 }
             }
         }
@@ -259,6 +295,43 @@ class MainActivity : ComponentActivity() {
                 LiveIslandService.update(context)
             }
             LiveIslandScheduler.scheduleAutoLaunch(context)
+            team.shiro.railwidget.widget.TripStateScheduler.schedule(context)
+        }
+
+        DisposableEffect(context) {
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: android.content.Context, intent: Intent) {
+                    trips = db.getAllTrips()
+                    currentTime = System.currentTimeMillis()
+                    isIslandRunning = LiveIslandService.isServiceRunning
+                    activeIslandOrderNo = LiveIslandService.currentOrderNo
+                }
+            }
+            ContextCompat.registerReceiver(context, receiver, IntentFilter(TripRefresh.ACTION_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+            onDispose { context.unregisterReceiver(receiver); activity?.onResumeCallback = null }
+        }
+        LaunchedEffect(Unit) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (true) {
+                    currentTime = System.currentTimeMillis()
+                    isIslandRunning = LiveIslandService.isServiceRunning
+                    activeIslandOrderNo = LiveIslandService.currentOrderNo
+                    delay(1000L)
+                }
+            }
+        }
+        fun refreshStatus() {
+            if (isRefreshingStatus) return
+            currentTime = System.currentTimeMillis()
+            trips = db.getAllTrips()
+            TripWidgetRenderer.updateAllWidgets(context)
+            isRefreshingStatus = true
+            scope.launch {
+                try {
+                    val result = withContext(Dispatchers.IO) { TripRefresh.refresh(context, force = true) }
+                    snackbarHostState.showSnackbar(result.message)
+                } finally { isRefreshingStatus = false }
+            }
         }
 
         var isAutoLaunchOn by remember { mutableStateOf(LiveIslandScheduler.isAutoLaunchEnabled(context)) }
@@ -286,17 +359,17 @@ class MainActivity : ComponentActivity() {
                     pendingIslandOrderNo = orderNo
                     showIslandPermissionDialog = true
                 } else {
-                    LiveIslandService.start(context, orderNo)
-                    isIslandRunning = true
+                    val started = LiveIslandService.start(context, orderNo)
+                    isIslandRunning = started && LiveIslandService.isServiceRunning
                     activeIslandOrderNo = orderNo
                     scope.launch {
                         val isPastTrip = targetTrip?.let { it.getStage() == TripStage.COMPLETED } ?: false
                         val tip = if (isPastTrip) {
-                            "已开启历史车次胶囊预览，可随时点击关闭"
+                            "历史车次胶囊启动请求已发送"
                         } else {
-                            "已开启灵动胶囊，实时显示发车倒计时与检票口"
+                            "灵动岛启动请求已发送"
                         }
-                        snackbarHostState.showSnackbar(tip)
+                        snackbarHostState.showSnackbar(if (started) tip else db.getSetting("island_start_status", "灵动岛启动失败"))
                     }
                 }
             }
@@ -304,8 +377,8 @@ class MainActivity : ComponentActivity() {
 
         fun updateTripGate(orderNo: String, newGate: String) {
             val existing = trips.find { it.orderNo == orderNo } ?: return
-            val updated = existing.copy(ticketGate = newGate)
-            db.insertOrUpdateTrip(updated)
+            val updated = existing.copy(ticketGate = newGate, ticketGateManual = newGate.isNotBlank())
+            db.insertOrUpdateTrip(updated, preserveManualGate = false)
             reloadTrips()
             scope.launch {
                 snackbarHostState.showSnackbar("已更新检票口为: $newGate 并同步至桌面小组件")
@@ -313,25 +386,13 @@ class MainActivity : ComponentActivity() {
         }
 
         fun refreshTripTimetable(trip: Trip) {
+            if (isRefreshingStatus) return
+            isRefreshingStatus = true
             scope.launch {
-                snackbarHostState.showSnackbar("正在查询 ${trip.trainCode} 沿途时刻表与检票口...")
-                val enriched = withContext(Dispatchers.IO) {
-                    try {
-                        RailwayApiService.enrichTrip(trip)
-                    } catch (_: Exception) {
-                        trip
-                    }
-                }
-                db.insertOrUpdateTrip(enriched)
-                reloadTrips()
-                val gateMsg = if (enriched.ticketGate.isNotBlank()) "，检票口: ${enriched.ticketGate}" else ""
-                if (enriched.stops.isNotEmpty()) {
-                    snackbarHostState.showSnackbar("已同步 ${trip.trainCode}$gateMsg，共 ${enriched.stops.size} 站时刻")
-                } else if (enriched.ticketGate.isNotBlank()) {
-                    snackbarHostState.showSnackbar("已同步 ${trip.trainCode} 检票口: ${enriched.ticketGate}")
-                } else {
-                    snackbarHostState.showSnackbar("未能获取到 ${trip.trainCode} 实时信息（可能车次暂未开售或已停运）")
-                }
+                try {
+                    val result = withContext(Dispatchers.IO) { TripRefresh.refresh(context, trip.orderNo, force = true) }
+                    snackbarHostState.showSnackbar(result.message)
+                } finally { isRefreshingStatus = false }
             }
         }
 
@@ -465,8 +526,8 @@ class MainActivity : ComponentActivity() {
         }
 
         // 行程三分类 (remember 记忆化，彻底杜绝无谓的重复耗时计算)
-        val (upcomingTrips, inTransitTrips, completedTrips) = remember(trips) {
-            val now = System.currentTimeMillis()
+        val (upcomingTrips, inTransitTrips, completedTrips) = remember(trips, currentTime) {
+            val now = currentTime
             val upcoming = trips.filter { it.getStage(now) == TripStage.UPCOMING && !it.isArchived }
                 .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
             val inTransit = trips.filter { it.getStage(now) == TripStage.IN_TRANSIT && !it.isArchived }
@@ -485,11 +546,19 @@ class MainActivity : ComponentActivity() {
                             Column {
                                 Text(
                                     text = "铁行卡片",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.titleLarge
                                 )
                                 Text(
-                                    text = "铁路行程与桌面小组件",
+                                    text = when {
+                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".visual") -> "视觉预览 · 原版本保留"
+                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".diagnostic") -> "启动排查 · 原数据保留"
+                                        else -> "铁路行程与桌面小组件"
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -499,61 +568,44 @@ class MainActivity : ComponentActivity() {
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
                         actions = {
-                            val spinAngle = if (isSyncingMail) {
-                                val infiniteTransition = rememberInfiniteTransition(label = "mailSyncRotation")
-                                infiniteTransition.animateFloat(
-                                    initialValue = 0f,
-                                    targetValue = 360f,
-                                    animationSpec = infiniteRepeatable(
-                                        animation = tween(durationMillis = 900, easing = LinearEasing)
-                                    ),
-                                    label = "spinAngle"
-                                ).value
+                            val refreshRotation = if (isRefreshingStatus) {
+                                val transition = rememberInfiniteTransition(label = "statusRefreshRotation")
+                                transition.animateFloat(0f, 360f,
+                                    animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+                                    label = "refreshRotation").value
                             } else 0f
-
-                            // 读取短信按钮 (原生规范：静止展示，读取中主题色高亮并防重)
-                            IconButton(
-                                onClick = { triggerSmsSync() },
-                                enabled = !isReadingSms
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sms,
-                                    contentDescription = "读取 12306 短信",
-                                    tint = if (isReadingSms) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
+                            IconButton(onClick = { refreshStatus() }, enabled = !isRefreshingStatus) {
+                                Icon(Icons.Default.Refresh, contentDescription = "刷新行程状态",
+                                    modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = refreshRotation },
+                                    tint = if (isRefreshingStatus) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                             }
-
-                            // 邮箱同步按钮 (仅标准圆形刷新箭头保留顺时针平滑旋转)
-                            IconButton(
-                                onClick = { triggerMailSync() },
-                                enabled = !isSyncingMail
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "同步邮箱",
-                                    tint = if (isSyncingMail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = if (isSyncingMail) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
-                                )
-                            }
-
-                            // 检查更新按钮 (原生规范：静止展示，检查中主题色高亮并防重)
-                            IconButton(
-                                onClick = { triggerCheckUpdate() },
-                                enabled = !isCheckingUpdate
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = "检查更新",
-                                    tint = if (isCheckingUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            // 设置按钮
                             IconButton(onClick = { showSettingsDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "设置"
-                                )
+                                Icon(Icons.Default.Settings, contentDescription = "设置", modifier = Modifier.size(24.dp))
+                            }
+                            Box {
+                                IconButton(onClick = { showToolbarMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "更多操作", modifier = Modifier.size(24.dp))
+                                }
+                                DropdownMenu(expanded = showToolbarMenu, onDismissRequest = { showToolbarMenu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (isReadingSms) "读取短信中…" else "读取 12306 短信") },
+                                        leadingIcon = { Icon(Icons.Default.Sms, null, Modifier.size(22.dp)) },
+                                        enabled = !isReadingSms,
+                                        onClick = { showToolbarMenu = false; triggerSmsSync() }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (isSyncingMail) "同步邮箱中…" else "同步邮箱") },
+                                        leadingIcon = { Icon(Icons.Default.Email, null, Modifier.size(22.dp)) },
+                                        enabled = !isSyncingMail,
+                                        onClick = { showToolbarMenu = false; triggerMailSync() }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (isCheckingUpdate) "检查更新中…" else "检查更新") },
+                                        leadingIcon = { Icon(Icons.Default.SystemUpdate, null, Modifier.size(22.dp)) },
+                                        enabled = !isCheckingUpdate,
+                                        onClick = { showToolbarMenu = false; triggerCheckUpdate() }
+                                    )
+                                }
                             }
                         }
                     )
@@ -692,6 +744,7 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
                                     )
                                     HeroTripCard(
+                                            now = currentTime,
                                         trip = upcomingTrips.first(),
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == upcomingTrips.first().orderNo,
                                         isAutoLaunchActive = isAutoLaunchOn,
@@ -728,6 +781,7 @@ class MainActivity : ComponentActivity() {
                                     items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
                                         val isNextTransfer = db.findPreviousTransferTrip(trip) != null
                                         HeroTripCard(
+                                            now = currentTime,
                                             trip = trip,
                                             isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                             isAutoLaunchActive = isAutoLaunchOn && isNextTransfer && LiveIslandScheduler.isTransferHandoverEnabled(context),
@@ -785,6 +839,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 items(inTransitTrips, key = { it.orderNo }) { trip ->
                                     HeroTripCard(
+                                            now = currentTime,
                                         trip = trip,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                         onToggleIsland = {
@@ -836,6 +891,7 @@ class MainActivity : ComponentActivity() {
                                 }
                                 items(completedTrips, key = { it.orderNo }) { trip ->
                                     HeroTripCard(
+                                            now = currentTime,
                                         trip = trip,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                         onToggleIsland = {
@@ -1342,3 +1398,4 @@ private fun WidgetPinGuideCard(
         }
     }
 }
+

@@ -7,6 +7,10 @@ on:
     branches: [ "master", "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     name: Build & Test RailWidget APK
@@ -23,7 +27,7 @@ jobs:
           java-version: '17'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -31,12 +35,150 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest
 
+      - name: Android Lint
+        run: ./gradlew lintDebug lintVisual
+
+      - name: Print lint errors
+        if: always()
+        run: |
+          python3 - <<'PYLINT'
+          import pathlib, xml.etree.ElementTree as ET
+          path = pathlib.Path('app/build/reports/lint-results-debug.xml')
+          if path.exists():
+              for issue in ET.parse(path).findall('issue'):
+                  if issue.get('severity') in ('Error', 'Fatal'):
+                      print(issue.attrib)
+                      for location in issue.findall('location'):
+                          print(location.attrib)
+          PYLINT
+
+      - name: Public train source smoke check
+        if: always()
+        run: python3 scripts/check_train_sources.py
+
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RailCard-Reports
+          path: |
+            app/build/reports/tests/
+            app/build/reports/lint-results-debug.*
+            app/build/reports/source-smoke.json
+          retention-days: 14
+
       - name: Build RailCard APK
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleVisual
 
       - name: Upload RailCard APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RailCard-APK
-          path: app/build/outputs/apk/debug/*.apk
+          name: RailCard-1.3.2-Visual-APK
+          path: app/build/outputs/apk/visual/*.apk
           retention-days: 14
+
+
+  startup:
+    name: Android 13 startup and upgrade
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.2-Visual-APK
+          path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.0-APK
+          path: previous-apk
+          run-id: 40307777296
+          github-token: ${{ github.token }}
+      - name: Verify independent visual package and signature
+        run: python3 scripts/check_apk_signatures.py
+      - name: Prepare screenshot review
+        run: python3 -m pip install Pillow
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch APK and check old data upgrade
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          script: |
+            mkdir -p startup-reports
+            adb install previous-apk/RailCard-v1.3.0.apk
+            adb shell am start -W -n team.shiro.railwidget/.ui.MainActivity
+            sleep 3
+            adb shell am force-stop team.shiro.railwidget
+            adb install apk/RailCard-v1.3.2-visual.apk
+            adb logcat -c
+            adb shell am start -W -n team.shiro.railwidget.visual/team.shiro.railwidget.ui.MainActivity
+            sleep 10
+            adb exec-out screencap -p > startup-reports/empty-screen.png
+            adb logcat -d -b crash > startup-reports/fresh-crash.txt
+            cat startup-reports/fresh-crash.txt
+            adb shell pidof team.shiro.railwidget.visual
+            ! grep -Eq 'FATAL EXCEPTION|Fatal signal' startup-reports/fresh-crash.txt
+            RAILCARD_STARTUP_PACKAGE=team.shiro.railwidget.visual bash scripts/check_upgrade_startup.sh
+            adb shell pm path team.shiro.railwidget
+            adb shell run-as team.shiro.railwidget test -f databases/rail_widget.db
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android13-Startup-Reports
+          path: startup-reports/
+
+  publish-preview:
+    name: Publish tested visual APK
+    needs: [build, startup]
+    if: github.repository == 'luojisama/rail-widget' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/railcard-live-refresh'
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.2-Visual-APK
+          path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: Android13-Startup-Reports
+          path: startup-reports
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = 'v1.3.2-visual.1';
+            const name = 'RailCard-v1.3.2-visual.apk';
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+              if (!release.prerelease) throw new Error('Refusing to change stable release');
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              release = (await github.rest.repos.createRelease({
+                ...context.repo, tag_name: tag, target_commitish: context.payload.pull_request.head.sha,
+                name: '铁行卡片 v1.3.2 视觉对齐预览', prerelease: true, make_latest: 'false',
+                body: '统一列车、时钟、车票和轨道图标的绘制边界，整理顶栏按钮对齐，补充桌面自适应图标和通知栏单色图标。保留蓝色与卡片风格。显示为铁行卡片·视觉预览，与现有应用数据独立，可并行安装。由于旧测试包没有可复用签名，本包不能覆盖更新旧测试包。'
+              })).data;
+            }
+            const existing = release.assets.find(asset => asset.name === name);
+            if (!existing) {
+              await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.id, name,
+                data: fs.readFileSync('apk/' + name)});
+            }
+            await core.summary.addLink('直接下载 APK', 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/releases/download/' + tag + '/' + name).write();
+            for (const filename of ['empty-screen.png', 'upgrade-screen.png', 'toolbar-menu.png', 'large-font-screen.png']) {
+              if (!release.assets.some(asset => asset.name === filename)) {
+                await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.id, name: filename,
+                  data: fs.readFileSync('startup-reports/' + filename)});
+              }
+            }

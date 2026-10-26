@@ -1,0 +1,30 @@
+name: Check preview signing compatibility
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  signatures:
+    if: github.repository == 'luojisama/rail-widget'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.0-APK
+          path: previous-apk
+          run-id: 40307777296
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.1-APK
+          path: apk
+          run-id: 40316046888
+          github-token: ${{ github.token }}
+      - run: python3 scripts/check_apk_signatures.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Preview-Signing-Report
+          path: startup-reports/
