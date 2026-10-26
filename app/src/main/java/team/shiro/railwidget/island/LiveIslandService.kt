@@ -78,7 +78,7 @@ class LiveIslandService : Service() {
                         if (IslandPermissionHelper.hasOverlayPermission(this)) {
                             if (islandView == null) {
                                 islandView = LiveIslandView(this)
-                                islandView?.attach()
+                                check(islandView?.attach() == true) { "无法显示悬浮窗" }
                             }
                             islandView?.updateTrip(trip)
                         }

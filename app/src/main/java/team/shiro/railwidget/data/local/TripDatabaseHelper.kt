@@ -78,7 +78,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
     }
 
     @Synchronized
-    fun insertOrUpdateTrip(trip: Trip) {
+    fun insertOrUpdateTrip(trip: Trip, preserveManualGate: Boolean = true) {
         val existing = getTrip(trip.orderNo)
         val db = writableDatabase
         val values = ContentValues().apply {
@@ -94,19 +94,42 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             put("carriage", trip.carriage)
             put("seat", trip.seat)
             put("seat_type", trip.seatType)
-            put("ticket_gate", if (existing?.ticketGateManual == true && !trip.ticketGateManual && trip.dataCheckedAt == 0L) existing.ticketGate else trip.ticketGate)
+            put("ticket_gate", if (preserveManualGate && existing?.ticketGateManual == true) existing.ticketGate else trip.ticketGate)
             put("ticket_type", trip.ticketType)
             put("price", trip.price)
             put("stopover_time", trip.stopoverTime)
             put("stops_json", serializeStops(trip.stops.ifEmpty { existing?.stops ?: emptyList() }))
-            val metadataTrip = if (trip.dataCheckedAt == 0L && !trip.ticketGateManual && existing != null) existing else trip
-            put("metadata_json", metadata(metadataTrip).toString())
+            val metadataTrip = if (trip.dataCheckedAt == 0L && !trip.ticketGateManual && existing != null && preserveManualGate) existing else trip
+            put("metadata_json", metadata(if (preserveManualGate && existing?.ticketGateManual == true)
+                metadataTrip.copy(ticketGateManual = true) else metadataTrip).toString())
             put("detail_url", trip.detailUrl)
             put("raw_source", trip.rawSource)
             put("updated_at", trip.updatedAt)
             put("is_archived", if (trip.isArchived) 1 else 0)
         }
         db.insertWithOnConflict(TABLE_TRIPS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    /** Atomically merge fetched fields without resurrecting deleted tickets or losing user edits. */
+    @Synchronized
+    fun applyTrainEnrichment(trip: Trip, enriched: Trip): Boolean {
+        val current = getTrip(trip.orderNo) ?: return false
+        if (current.trainCode != trip.trainCode || current.departureDate != trip.departureDate ||
+            current.departureStation != trip.departureStation || current.arrivalStation != trip.arrivalStation) return false
+        if (enriched.dataCheckedAt > maxOf(trip.dataCheckedAt, current.dataCheckedAt)) {
+            insertOrUpdateTrip(current.copy(
+                trainNo = enriched.trainNo, stops = enriched.stops, arrivalStation = enriched.arrivalStation,
+                departureTime = if (current.departureTime == trip.departureTime) enriched.departureTime else current.departureTime,
+                arrivalTime = if (current.arrivalTime == trip.arrivalTime) enriched.arrivalTime else current.arrivalTime,
+                ticketGate = if (current.ticketGateManual) current.ticketGate else enriched.ticketGate,
+                trainModel = enriched.trainModel, railwayBureau = enriched.railwayBureau,
+                diningCar = enriched.diningCar, platform = enriched.platform,
+                totalMileageKm = enriched.totalMileageKm, rideMileageKm = enriched.rideMileageKm,
+                arrivalDayOffset = enriched.arrivalDayOffset, dataSource = enriched.dataSource,
+                dataCheckedAt = enriched.dataCheckedAt, liveCheckedAt = enriched.liveCheckedAt))
+            return true
+        }
+        return false
     }
 
     fun getAllTrips(): List<Trip> {

@@ -310,7 +310,9 @@ fun HeroTripCard(
                     modifier = Modifier.padding(horizontal = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    val durationText = calculateDuration(trip.departureTime, trip.arrivalTime)
+                    val durationText = ((trip.getArrivalTimeMillis() - trip.getDepartureTimeMillis()) / 60000L).let { minutes ->
+                        if (trip.arrivalTime.isBlank()) "" else "${minutes / 60}时${minutes % 60}分"
+                    }
                     if (durationText.isNotBlank()) {
                         Text(
                             text = durationText,

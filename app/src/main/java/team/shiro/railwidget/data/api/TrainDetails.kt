@@ -3,6 +3,7 @@ package team.shiro.railwidget.data.api
 import org.json.JSONObject
 import team.shiro.railwidget.data.model.Trip
 import team.shiro.railwidget.data.model.TripTimeline
+import team.shiro.railwidget.data.model.StopInfo
 
 /** Parsing is separate from transport so missing or changed upstream fields are testable. */
 object TrainDetails {
@@ -15,24 +16,42 @@ object TrainDetails {
         val rows = detail.optJSONArray("stopTime") ?: return trip
         val indexed = (0 until rows.length()).map { rows.getJSONObject(it) }
         val first = indexed.firstOrNull() ?: return trip
-        val stops = trip.stops.map { stop ->
+        val baseStops = trip.stops.ifEmpty {
+            indexed.map { row -> StopInfo(row.text("stationNo"), row.text("stationName"),
+                row.text("arriveTime"), row.text("startTime"), row.text("stopover_time")) }
+        }
+        val distances = indexed.map { it.text("distance").toDoubleOrNull()?.takeIf { km -> km.isFinite() && km >= 0 } }
+        // Only a complete, monotone series starting at the train origin is usable as cumulative km.
+        val originMatches = first.text("start_station_name").let { it.isBlank() || TripTimeline.station(it) == TripTimeline.station(first.text("stationName")) }
+        val endMatches = indexed.last().text("end_station_name").let { it.isBlank() || TripTimeline.station(it) == TripTimeline.station(indexed.last().text("stationName")) }
+        val hasMileage = originMatches && endMatches && distances.size > 1 && distances.first() == 0.0 && distances.all { it != null } &&
+            distances.zipWithNext().all { (a, b) -> b!! >= a!! } && distances.last()!! > 0
+        val stops = baseStops.map { stop ->
             val matches = indexed.filter { TripTimeline.station(it.text("stationName")) == TripTimeline.station(stop.stationName) }
             val row = matches.singleOrNull() ?: matches.find { it.text("stationNo").toIntOrNull() == stop.stationNo.toIntOrNull() }
             if (row == null) stop else stop.copy(
                 ticketGate = row.text("wicket").ifBlank { stop.ticketGate },
                 // A gate is not a platform. Only the explicitly named platform field is accepted.
                 platform = row.text("platform").ifBlank { stop.platform },
+                mileageKm = if (hasMileage) distances[indexed.indexOf(row)] else stop.mileageKm,
+                arrivalDay = row.text("dayDifference").toIntOrNull() ?: stop.arrivalDay,
                 actualArrival = timestamp(row.text("fact_arraive_date_time")) ?: stop.actualArrival,
                 actualDeparture = timestamp(row.text("fact_train_date_time")) ?: stop.actualDeparture
             )
         }
         val boarding = stops.find { TripTimeline.station(it.stationName) == TripTimeline.station(trip.departureStation) }
+        val boardingIndex = stops.indexOf(boarding)
+        val alighting = stops.drop(boardingIndex + 1).find { TripTimeline.station(it.stationName) == TripTimeline.station(trip.arrivalStation) }
+        val rideMileage = if (boarding?.mileageKm != null && alighting?.mileageKm != null)
+            (alighting.mileageKm - boarding.mileageKm).takeIf { it > 0 } else null
         return trip.copy(
             stops = stops,
             trainModel = first.text("jiaolu_train_style").ifBlank { trip.trainModel },
             railwayBureau = first.text("jiaolu_corporation_code").takeUnless { it.matches(Regex("[A-Za-z0-9]+")) }.orEmpty().ifBlank { trip.railwayBureau },
             ticketGate = if (trip.ticketGateManual) trip.ticketGate else boarding?.ticketGate.orEmpty().ifBlank { trip.ticketGate },
             platform = boarding?.platform.orEmpty().ifBlank { trip.platform },
+            totalMileageKm = if (hasMileage) distances.last() else trip.totalMileageKm,
+            rideMileageKm = rideMileage ?: trip.rideMileageKm,
             liveCheckedAt = now, dataCheckedAt = now,
             dataSource = (trip.dataSource.split(" · ") + "12306列车详情").filter { it.isNotBlank() }.distinct().joinToString(" · ")
         )

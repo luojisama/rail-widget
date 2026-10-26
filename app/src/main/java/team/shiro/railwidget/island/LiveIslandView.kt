@@ -598,13 +598,15 @@ class LiveIslandView(private val context: Context) {
     /**
      * 将灵动岛添加到桌面图层
      */
-    fun attach() {
-        if (isAttached) return
+    fun attach(): Boolean {
+        if (isAttached) return true
         try {
             windowManager.addView(rootContainer, windowParams)
             isAttached = true
+            return true
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.w("LiveIslandView", "Unable to attach overlay", e)
+            return false
         }
     }
 
@@ -638,12 +640,11 @@ class LiveIslandView(private val context: Context) {
 
     private fun getCountdownText(trip: Trip): String {
         return try {
-            val format = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.CHINA)
-            val time = if (trip.departureTime.isNotBlank() && trip.departureTime != "00:00") trip.departureTime else return "已购"
-            val depMillis = format.parse("${trip.departureDate} $time")?.time ?: return "已购"
-            val diff = depMillis - System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            val depMillis = trip.getDepartureTimeMillis()
+            val diff = depMillis - now
             when {
-                diff < -2 * 3600 * 1000 -> "已到达"
+                trip.getStage(now) == TripStage.COMPLETED -> "已到达"
                 diff < 0 -> "运行中"
                 diff < 60 * 60 * 1000 -> "${diff / 60000}m开"
                 diff < 24 * 3600 * 1000 -> "${diff / 3600000}h开"

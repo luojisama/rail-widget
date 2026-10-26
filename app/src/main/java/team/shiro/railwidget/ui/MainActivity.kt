@@ -355,7 +355,7 @@ class MainActivity : ComponentActivity() {
         fun updateTripGate(orderNo: String, newGate: String) {
             val existing = trips.find { it.orderNo == orderNo } ?: return
             val updated = existing.copy(ticketGate = newGate, ticketGateManual = newGate.isNotBlank())
-            db.insertOrUpdateTrip(updated)
+            db.insertOrUpdateTrip(updated, preserveManualGate = false)
             reloadTrips()
             scope.launch {
                 snackbarHostState.showSnackbar("已更新检票口为: $newGate 并同步至桌面小组件")

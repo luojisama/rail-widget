@@ -51,23 +51,7 @@ object TripRefresh {
             }
             attempts[trip.orderNo] = now
             val enriched = LulutongData.enrich(context, RailwayApiService.enrichTrip(trip))
-            // A network request must not resurrect a deleted trip or overwrite a user edit.
-            val current = db.getTrip(trip.orderNo) ?: return@forEach
-            if (current.trainCode != trip.trainCode || current.departureDate != trip.departureDate ||
-                current.departureStation != trip.departureStation || current.arrivalStation != trip.arrivalStation) return@forEach
-            if (enriched.dataCheckedAt > trip.dataCheckedAt) {
-                db.insertOrUpdateTrip(current.copy(
-                    trainNo = enriched.trainNo, stops = enriched.stops,
-                    departureTime = if (current.departureTime == trip.departureTime) enriched.departureTime else current.departureTime,
-                    arrivalTime = if (current.arrivalTime == trip.arrivalTime) enriched.arrivalTime else current.arrivalTime,
-                    ticketGate = if (current.ticketGateManual) current.ticketGate else enriched.ticketGate,
-                    trainModel = enriched.trainModel, railwayBureau = enriched.railwayBureau,
-                    diningCar = enriched.diningCar, platform = enriched.platform,
-                    totalMileageKm = enriched.totalMileageKm, rideMileageKm = enriched.rideMileageKm,
-                    arrivalDayOffset = enriched.arrivalDayOffset, dataSource = enriched.dataSource,
-                    dataCheckedAt = enriched.dataCheckedAt, liveCheckedAt = enriched.liveCheckedAt))
-                updated++
-            }
+            if (db.applyTrainEnrichment(trip, enriched)) updated++
         }
         publish(context)
         return Result(trips.size, updated)

@@ -45,6 +45,18 @@ class TripDatabaseMigrationTest {
         helper.insertOrUpdateTrip(t.copy(dataCheckedAt = 0L, trainModel = "", stops = emptyList()))
         assertEquals("CR400AF", helper.getTrip("old")!!.trainModel)
         assertEquals(100L, helper.getTrip("old")!!.stops.single().actualDeparture)
+        val manual = helper.getTrip("old")!!.copy(ticketGate = "手动口", ticketGateManual = true)
+        helper.insertOrUpdateTrip(manual, preserveManualGate = false)
+        helper.insertOrUpdateTrip(t.copy(ticketGate = "接口口", dataCheckedAt = 456L))
+        assertEquals("手动口", helper.getTrip("old")!!.ticketGate)
+        assertTrue(helper.getTrip("old")!!.ticketGateManual)
+        val beforeNetwork = helper.getTrip("old")!!
+        helper.insertOrUpdateTrip(beforeNetwork.copy(seat = "新座位"))
+        assertTrue(helper.applyTrainEnrichment(beforeNetwork, beforeNetwork.copy(trainModel = "新车型", dataCheckedAt = 789L)))
+        assertEquals("新座位", helper.getTrip("old")!!.seat)
+        helper.deleteTrip("old")
+        assertFalse(helper.applyTrainEnrichment(beforeNetwork, beforeNetwork.copy(dataCheckedAt = 999L)))
+        assertNull(helper.getTrip("old"))
         helper.close()
         context.deleteDatabase("rail_widget.db")
     }

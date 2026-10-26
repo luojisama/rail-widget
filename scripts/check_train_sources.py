@@ -22,7 +22,8 @@ def check(name, url, form=None):
                 detail = data.get("data", {}).get("trainDetail", {}) or {}
                 stops = detail.get("stopTime", []) or []
                 summary = {"train": detail.get("stationTrainCodeAll"), "stop_count": len(stops),
-                           "stop_fields": sorted(stops[0]) if stops else []}
+                           "stop_fields": sorted(stops[0]) if stops else [],
+                           "stops": [{key: row.get(key) for key in ("stationName", "stationNo", "distance", "dayDifference", "startTrainDate", "trainDate", "jiaolu_corporation_code", "bureau_code", "wicket", "fact_arraive_date_time", "fact_train_date_time")} for row in stops]}
             else:
                 detail = (data.get("content") or {}).get("data") or {}
                 summary = {"fields": sorted(detail), "trainStyle": detail.get("trainStyle"),

@@ -33,7 +33,9 @@ object RailwayApiService {
         if (trainNo.isNotBlank()) {
             val stops = queryTimetable(trainNo, trip.departureDate, trip.departureStation, trip.arrivalStation)
             val dep = stops.indexOfFirst { cleanStation(it.stationName) == cleanStation(trip.departureStation) }
-            val arr = stops.indices.firstOrNull { it > dep && cleanStation(stops[it].stationName) == cleanStation(trip.arrivalStation) }
+            val effectiveArrival = if (trip.arrivalStation.isBlank() || trip.arrivalStation in listOf("到达站", "终点站"))
+                stops.lastOrNull()?.stationName ?: trip.arrivalStation else trip.arrivalStation
+            val arr = stops.indices.firstOrNull { it > dep && cleanStation(stops[it].stationName) == cleanStation(effectiveArrival) }
             if (dep >= 0 && arr != null) {
                 // Preserve optional live fields when a timetable response contains only static data.
                 val merged = stops.map { stop ->
@@ -41,7 +43,7 @@ object RailwayApiService {
                     if (old == null) stop else old.copy(arriveTime = stop.arriveTime, startTime = stop.startTime,
                         stopoverTime = stop.stopoverTime, arrivalDay = stop.arrivalDay, departureDay = stop.departureDay)
                 }
-                result = trip.copy(trainNo = trainNo, stops = merged,
+                result = trip.copy(trainNo = trainNo, stops = merged, arrivalStation = effectiveArrival,
                     departureTime = stops[dep].startTime.takeIf { it.matches(Regex("\\d{2}:\\d{2}")) } ?: trip.departureTime,
                     arrivalTime = stops[arr].arriveTime.takeIf { it.matches(Regex("\\d{2}:\\d{2}")) } ?: trip.arrivalTime,
                     dataCheckedAt = now, dataSource = "12306时刻表")

@@ -48,4 +48,22 @@ class TrainDetailsTest {
         response.getJSONObject("content").getJSONObject("data").remove("carInfo")
         assertEquals("", TrainDetails.applyStyle(trip, response, 100).diningCar)
     }
+    @Test fun calculatesTrainAndRideMileageFromCumulativeSeries() {
+        val json = JSONObject("""{"data":{"trainDetail":{"stationTrainCodeAll":"G101","stopTime":[
+            {"stationNo":"01","stationName":"北京南","distance":"0","startTime":"08:00"},
+            {"stationNo":"02","stationName":"南京南","distance":"1023","arriveTime":"11:00","startTime":"11:05"},
+            {"stationNo":"03","stationName":"上海虹桥","distance":"1318","arriveTime":"12:30"}]}}}""")
+        val t = trip.copy(departureStation = "南京南", departureTime = "11:05", stops = emptyList())
+        val result = TrainDetails.applyInfo(t, json, 100)
+        assertEquals(1318.0, result.totalMileageKm!!, 0.01)
+        assertEquals(295.0, result.rideMileageKm!!, 0.01)
+        assertEquals(1023.0, result.stops[1].mileageKm!!, 0.01)
+        // A segment-distance series cannot be treated as cumulative distance.
+        json.getJSONObject("data").getJSONObject("trainDetail").getJSONArray("stopTime").getJSONObject(2).put("distance", "295")
+        assertNull(TrainDetails.applyInfo(t, json, 100).totalMileageKm)
+    }
+    @Test fun incompleteMileageDoesNotEraseCachedMileage() {
+        val t = trip.copy(totalMileageKm = 1318.0, rideMileageKm = 1318.0)
+        assertEquals(1318.0, TrainDetails.applyInfo(t, response(), 100).totalMileageKm!!, 0.01)
+    }
 }
