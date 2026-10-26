@@ -11,16 +11,22 @@ object TripTimeline {
     private const val DAY = 86_400_000L
     fun station(value: String) = value.trim().removeSuffix("站")
     fun parse(date: String, time: String): Long? = runCatching {
-        LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time)).atZone(zone).toInstant().toEpochMilli()
+        LocalDateTime.of(LocalDate.parse(date), LocalTime.parse(time.trim().padStart(5, '0'))).atZone(zone).toInstant().toEpochMilli()
     }.getOrNull()
 
     data class Event(val index: Int, val arrival: Long?, val departure: Long?)
+
+    fun originDate(trip: Trip): String {
+        val first = events(trip).firstOrNull()
+        val time = first?.departure ?: first?.arrival ?: return trip.departureDate
+        return java.time.Instant.ofEpochMilli(time).atZone(zone).toLocalDate().toString()
+    }
 
     fun events(trip: Trip): List<Event> {
         val base = parse(trip.departureDate, "00:00") ?: return emptyList()
         var previous: Long? = null
         fun resolve(time: String, explicitDay: Int?): Long? {
-            val clock = runCatching { LocalTime.parse(time) }.getOrNull() ?: return null
+            val clock = runCatching { LocalTime.parse(time.trim().padStart(5, '0')) }.getOrNull() ?: return null
             var value = base + clock.toSecondOfDay() * 1000L + (explicitDay ?: 0) * DAY
             if (explicitDay == null) while (previous != null && value < previous!!) value += DAY
             previous = value

@@ -15,6 +15,9 @@ class TripTimelineTest {
         ))
     private fun at(date: String, time: String) = TripTimeline.parse(date, time)!!
 
+    @Test fun acceptsSingleDigitHoursFromImportedTickets() {
+        assertEquals(at("2026-10-26", "08:00"), TripTimeline.parse("2026-10-26", "8:00"))
+    }
     @Test fun timezoneDoesNotChangeRailwayTimes() {
         val previous = TimeZone.getDefault()
         try {
@@ -41,6 +44,7 @@ class TripTimelineTest {
     @Test fun boardingAfterTrainFirstMidnightUsesTicketDate() {
         val t = trip().copy(departureStation = "丙", departureTime = "00:40")
         assertEquals(at("2026-10-26", "02:00"), t.getArrivalTimeMillis())
+        assertEquals("2026-10-25", TripTimeline.originDate(t))
         assertEquals(TripTimeline.Position(2, true, false), t.currentPosition(at("2026-10-26", "00:35")))
     }
     @Test fun handlesMoreThanOneMidnightAndMidnightDeparture() {

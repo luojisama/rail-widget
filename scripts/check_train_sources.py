@@ -2,6 +2,8 @@
 import concurrent.futures
 import datetime
 import json
+import io
+import zipfile
 import pathlib
 import urllib.parse
 import urllib.request
@@ -14,6 +16,15 @@ def check(name, url, form=None):
             headers={"User-Agent": "Mozilla/5.0"},
         )
         with urllib.request.urlopen(request, timeout=12) as response:
+            if name == "路路通数据包":
+                raw_package = response.read(32 * 1024 * 1024 + 1)
+                if len(raw_package) > 32 * 1024 * 1024:
+                    raise ValueError("package too large")
+                with zipfile.ZipFile(io.BytesIO(raw_package)) as package:
+                    summary = {"bytes": len(raw_package), "entries": package.namelist(),
+                               "routes_bytes": package.getinfo("routes.dat").file_size,
+                               "jlb_bytes": package.getinfo("jlb.dat").file_size}
+                return {"source": name, "http": response.status, "summary": summary}
             raw = response.read(512 * 1024).decode("utf-8-sig", "replace")
             data = json.loads(raw.replace('"name": 应用宝"', '"name": "应用宝"'))
             if name == "路路通版本":
@@ -37,6 +48,7 @@ if __name__ == "__main__":
     today = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8))).strftime("%Y%m%d")
     queries = [
         ("路路通版本", "http://down.lltskb.com/android.ver", None),
+        ("路路通数据包", "http://down.lltskb.com/an.db", None),
         ("12306列车详情", "https://mobile.12306.cn/wxxcx/wechat/main/travelServiceQrcodeTrainInfo",
          {"trainCode": "G101", "startDay": today}),
         ("12306车型", "https://mobile.12306.cn/wxxcx/openplatform-inner/miniprogram/wifiapps/appFrontEnd/v2/lounge/open-smooth-common/trainStyleBatch/getCarDetail?"

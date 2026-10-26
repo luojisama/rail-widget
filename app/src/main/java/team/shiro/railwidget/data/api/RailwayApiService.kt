@@ -53,19 +53,20 @@ object RailwayApiService {
                 if (!gate.isNullOrBlank()) result = result.copy(ticketGate = gate, dataCheckedAt = now)
             }
         }
-        // Query only the travel date. Today's platform must never overwrite another day's ticket.
+        // Details APIs use the train origin date, which can precede a mid-route ticket's date.
+        val originDate = team.shiro.railwidget.data.model.TripTimeline.originDate(result)
         runCatching {
-            val form = FormBody.Builder().add("trainCode", trip.trainCode).add("startDay", trip.departureDate.replace("-", "")).build()
+            val form = FormBody.Builder().add("trainCode", trip.trainCode).add("startDay", originDate.replace("-", "")).build()
             val request = Request.Builder().url("https://mobile.12306.cn/wxxcx/wechat/main/travelServiceQrcodeTrainInfo")
                 .header("User-Agent", USER_AGENT).post(form).build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) result = TrainDetails.applyInfo(result, JSONObject(response.body?.string() ?: "{}"), now)
             }
         }
-        if (result.trainModel.isBlank() || result.diningCar.isBlank()) runCatching {
+        runCatching {
             val url = okhttp3.HttpUrl.Builder().scheme("https").host("mobile.12306.cn")
                 .encodedPath("/wxxcx/openplatform-inner/miniprogram/wifiapps/appFrontEnd/v2/lounge/open-smooth-common/trainStyleBatch/getCarDetail")
-                .addQueryParameter("trainCode", trip.trainCode).addQueryParameter("runningDay", trip.departureDate.replace("-", ""))
+                .addQueryParameter("trainCode", trip.trainCode).addQueryParameter("runningDay", originDate.replace("-", ""))
                 .addQueryParameter("reqType", "form").addQueryParameter("carCode", trip.trainCode).build()
             client.newCall(Request.Builder().url(url).header("User-Agent", USER_AGENT).build()).execute().use { response ->
                 if (response.isSuccessful) result = TrainDetails.applyStyle(result, JSONObject(response.body?.string() ?: "{}"), now)
