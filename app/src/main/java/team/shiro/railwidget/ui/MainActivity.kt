@@ -43,6 +43,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -58,6 +59,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -96,6 +99,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -238,6 +242,7 @@ class MainActivity : ComponentActivity() {
 
         var showImportDialog by remember { mutableStateOf(false) }
         var showSettingsDialog by remember { mutableStateOf(false) }
+        var showToolbarMenu by remember { mutableStateOf(false) }
         var showPinBlockedDialog by remember { mutableStateOf(false) }
         var showMiuiSmsPermissionDialog by remember { mutableStateOf(false) }
 
@@ -541,11 +546,19 @@ class MainActivity : ComponentActivity() {
                             Column {
                                 Text(
                                     text = "铁行卡片",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.titleLarge
                                 )
                                 Text(
-                                    text = if (team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".diagnostic")) "启动排查版 · 原应用数据保留" else "铁路行程与桌面小组件",
+                                    text = when {
+                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".visual") -> "视觉预览 · 原版本保留"
+                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".diagnostic") -> "启动排查 · 原数据保留"
+                                        else -> "铁路行程与桌面小组件"
+                                    },
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -555,65 +568,44 @@ class MainActivity : ComponentActivity() {
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
                         actions = {
+                            val refreshRotation = if (isRefreshingStatus) {
+                                val transition = rememberInfiniteTransition(label = "statusRefreshRotation")
+                                transition.animateFloat(0f, 360f,
+                                    animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+                                    label = "refreshRotation").value
+                            } else 0f
                             IconButton(onClick = { refreshStatus() }, enabled = !isRefreshingStatus) {
                                 Icon(Icons.Default.Refresh, contentDescription = "刷新行程状态",
+                                    modifier = Modifier.size(24.dp).graphicsLayer { rotationZ = refreshRotation },
                                     tint = if (isRefreshingStatus) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
                             }
-                            val spinAngle = if (isSyncingMail) {
-                                val infiniteTransition = rememberInfiniteTransition(label = "mailSyncRotation")
-                                infiniteTransition.animateFloat(
-                                    initialValue = 0f,
-                                    targetValue = 360f,
-                                    animationSpec = infiniteRepeatable(
-                                        animation = tween(durationMillis = 900, easing = LinearEasing)
-                                    ),
-                                    label = "spinAngle"
-                                ).value
-                            } else 0f
-
-                            // 读取短信按钮 (原生规范：静止展示，读取中主题色高亮并防重)
-                            IconButton(
-                                onClick = { triggerSmsSync() },
-                                enabled = !isReadingSms
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Sms,
-                                    contentDescription = "读取 12306 短信",
-                                    tint = if (isReadingSms) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            // 邮箱同步按钮 (仅标准圆形刷新箭头保留顺时针平滑旋转)
-                            IconButton(
-                                onClick = { triggerMailSync() },
-                                enabled = !isSyncingMail
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Email,
-                                    contentDescription = "同步邮箱",
-                                    tint = if (isSyncingMail) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                    modifier = if (isSyncingMail) Modifier.graphicsLayer { rotationZ = spinAngle } else Modifier
-                                )
-                            }
-
-                            // 检查更新按钮 (原生规范：静止展示，检查中主题色高亮并防重)
-                            IconButton(
-                                onClick = { triggerCheckUpdate() },
-                                enabled = !isCheckingUpdate
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SystemUpdate,
-                                    contentDescription = "检查更新",
-                                    tint = if (isCheckingUpdate) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            // 设置按钮
                             IconButton(onClick = { showSettingsDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "设置"
-                                )
+                                Icon(Icons.Default.Settings, contentDescription = "设置", modifier = Modifier.size(24.dp))
+                            }
+                            Box {
+                                IconButton(onClick = { showToolbarMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "更多操作", modifier = Modifier.size(24.dp))
+                                }
+                                DropdownMenu(expanded = showToolbarMenu, onDismissRequest = { showToolbarMenu = false }) {
+                                    DropdownMenuItem(
+                                        text = { Text(if (isReadingSms) "读取短信中…" else "读取 12306 短信") },
+                                        leadingIcon = { Icon(Icons.Default.Sms, null, Modifier.size(22.dp)) },
+                                        enabled = !isReadingSms,
+                                        onClick = { showToolbarMenu = false; triggerSmsSync() }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (isSyncingMail) "同步邮箱中…" else "同步邮箱") },
+                                        leadingIcon = { Icon(Icons.Default.Email, null, Modifier.size(22.dp)) },
+                                        enabled = !isSyncingMail,
+                                        onClick = { showToolbarMenu = false; triggerMailSync() }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (isCheckingUpdate) "检查更新中…" else "检查更新") },
+                                        leadingIcon = { Icon(Icons.Default.SystemUpdate, null, Modifier.size(22.dp)) },
+                                        enabled = !isCheckingUpdate,
+                                        onClick = { showToolbarMenu = false; triggerCheckUpdate() }
+                                    )
+                                }
                             }
                         }
                     )

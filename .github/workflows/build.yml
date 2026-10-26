@@ -36,7 +36,7 @@ jobs:
         run: ./gradlew testDebugUnitTest
 
       - name: Android Lint
-        run: ./gradlew lintDebug lintDiagnostic
+        run: ./gradlew lintDebug lintVisual
 
       - name: Print lint errors
         if: always()
@@ -68,13 +68,13 @@ jobs:
           retention-days: 14
 
       - name: Build RailCard APK
-        run: ./gradlew assembleDiagnostic
+        run: ./gradlew assembleVisual
 
       - name: Upload RailCard APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RailCard-1.3.1-Diagnostic-APK
-          path: app/build/outputs/apk/diagnostic/*.apk
+          name: RailCard-1.3.2-Visual-APK
+          path: app/build/outputs/apk/visual/*.apk
           retention-days: 14
 
 
@@ -87,7 +87,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: RailCard-1.3.1-Diagnostic-APK
+          name: RailCard-1.3.2-Visual-APK
           path: apk
       - uses: actions/download-artifact@v4
         with:
@@ -95,8 +95,10 @@ jobs:
           path: previous-apk
           run-id: 40307777296
           github-token: ${{ github.token }}
-      - name: Verify independent diagnostic package and signature
+      - name: Verify independent visual package and signature
         run: python3 scripts/check_apk_signatures.py
+      - name: Prepare screenshot review
+        run: python3 -m pip install Pillow
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -110,19 +112,21 @@ jobs:
           profile: pixel_5
           disable-animations: true
           script: |
+            mkdir -p startup-reports
             adb install previous-apk/RailCard-v1.3.0.apk
             adb shell am start -W -n team.shiro.railwidget/.ui.MainActivity
             sleep 3
             adb shell am force-stop team.shiro.railwidget
-            adb install apk/RailCard-v1.3.1-diagnostic.apk
+            adb install apk/RailCard-v1.3.2-visual.apk
             adb logcat -c
-            adb shell am start -W -n team.shiro.railwidget.diagnostic/team.shiro.railwidget.ui.MainActivity
+            adb shell am start -W -n team.shiro.railwidget.visual/team.shiro.railwidget.ui.MainActivity
             sleep 10
+            adb exec-out screencap -p > startup-reports/empty-screen.png
             adb logcat -d -b crash > startup-reports/fresh-crash.txt
             cat startup-reports/fresh-crash.txt
-            adb shell pidof team.shiro.railwidget.diagnostic
+            adb shell pidof team.shiro.railwidget.visual
             ! grep -Eq 'FATAL EXCEPTION|Fatal signal' startup-reports/fresh-crash.txt
-            RAILCARD_STARTUP_PACKAGE=team.shiro.railwidget.diagnostic bash scripts/check_upgrade_startup.sh
+            RAILCARD_STARTUP_PACKAGE=team.shiro.railwidget.visual bash scripts/check_upgrade_startup.sh
             adb shell pm path team.shiro.railwidget
             adb shell run-as team.shiro.railwidget test -f databases/rail_widget.db
       - uses: actions/upload-artifact@v4
@@ -132,7 +136,7 @@ jobs:
           path: startup-reports/
 
   publish-preview:
-    name: Publish tested diagnostic APK
+    name: Publish tested visual APK
     needs: [build, startup]
     if: github.repository == 'luojisama/rail-widget' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/railcard-live-refresh'
     permissions:
@@ -142,14 +146,18 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: RailCard-1.3.1-Diagnostic-APK
+          name: RailCard-1.3.2-Visual-APK
           path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: Android13-Startup-Reports
+          path: startup-reports
       - uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            const tag = 'v1.3.1-diagnostic.1';
-            const name = 'RailCard-v1.3.1-diagnostic.apk';
+            const tag = 'v1.3.2-visual.1';
+            const name = 'RailCard-v1.3.2-visual.apk';
             let release;
             try {
               release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
@@ -158,8 +166,8 @@ jobs:
               if (error.status !== 404) throw error;
               release = (await github.rest.repos.createRelease({
                 ...context.repo, tag_name: tag, target_commitish: context.payload.pull_request.head.sha,
-                name: '铁行卡片 v1.3.1 启动排查版', prerelease: true, make_latest: 'false',
-                body: '可并行安装的启动排查版，显示为铁行卡片·启动排查。与原应用数据独立，保留原应用和原行程，不需要卸载旧版。修复旧日期渲染越界，调整后台初始化时机，新增本地崩溃报告。仍未复现 MIUI 14 真机白屏闪退；若仍退出，请再打开一次并复制错误信息。'
+                name: '铁行卡片 v1.3.2 视觉对齐预览', prerelease: true, make_latest: 'false',
+                body: '统一列车、时钟、车票和轨道图标的绘制边界，整理顶栏按钮对齐，补充桌面自适应图标和通知栏单色图标。保留蓝色与卡片风格。显示为铁行卡片·视觉预览，与现有应用数据独立，可并行安装。由于旧测试包没有可复用签名，本包不能覆盖更新旧测试包。'
               })).data;
             }
             const existing = release.assets.find(asset => asset.name === name);
@@ -168,3 +176,9 @@ jobs:
                 data: fs.readFileSync('apk/' + name)});
             }
             await core.summary.addLink('直接下载 APK', 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/releases/download/' + tag + '/' + name).write();
+            for (const filename of ['empty-screen.png', 'upgrade-screen.png', 'toolbar-menu.png', 'large-font-screen.png']) {
+              if (!release.assets.some(asset => asset.name === filename)) {
+                await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.id, name: filename,
+                  data: fs.readFileSync('startup-reports/' + filename)});
+              }
+            }

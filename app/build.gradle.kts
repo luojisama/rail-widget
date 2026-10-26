@@ -12,8 +12,8 @@ android {
         applicationId = "team.shiro.railwidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "1.3.1"
+        versionCode = 27
+        versionName = "1.3.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -28,6 +28,12 @@ android {
         }
         debug {
             isMinifyEnabled = false
+        }
+        create("visual") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".visual"
+            versionNameSuffix = "-visual"
+            matchingFallbacks += listOf("debug")
         }
         create("diagnostic") {
             initWith(getByName("debug"))

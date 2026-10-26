@@ -266,7 +266,7 @@ class LiveIslandService : Service() {
         val seatText = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) "${trip.carriage} ${trip.seat}" else "席位待出"
 
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_train)
             .setContentTitle("${trip.trainCode} · $gateText")
             .setContentText(trip.currentPosition()?.label(trip) ?: "${trip.departureStation} → ${trip.arrivalStation} | $seatText")
             .setContentIntent(pendingOpen)

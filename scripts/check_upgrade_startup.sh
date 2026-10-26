@@ -42,6 +42,36 @@ adb pull /sdcard/railcard-window.xml startup-reports/upgrade-window.xml
 adb exec-out screencap -p > startup-reports/upgrade-screen.png
 adb shell run-as "$package" cat databases/rail_widget.db > startup-reports/upgraded-test.db
 
+# Exercise toolbar overflow and font scaling using semantic bounds from the UI dump.
+python3 - <<'PYUI'
+import re, subprocess, xml.etree.ElementTree as ET
+root = ET.parse('startup-reports/upgrade-window.xml')
+node = next(n for n in root.iter('node') if n.get('content-desc') == '更多操作')
+x1, y1, x2, y2 = map(int, re.findall(r'\d+', node.get('bounds')))
+subprocess.run(['adb', 'shell', 'input', 'tap', str((x1+x2)//2), str((y1+y2)//2)], check=True)
+PYUI
+sleep 2
+adb exec-out screencap -p > startup-reports/toolbar-menu.png
+adb shell uiautomator dump /sdcard/railcard-menu.xml
+adb pull /sdcard/railcard-menu.xml startup-reports/menu-window.xml
+grep -q '读取 12306 短信' startup-reports/menu-window.xml
+adb shell input keyevent 4
+adb shell settings put system font_scale 1.3
+sleep 3
+adb exec-out screencap -p > startup-reports/large-font-screen.png
+adb shell settings put system font_scale 1.0
+# Synthetic screenshots only; emit compact thumbnails for remote visual review.
+python3 - <<'PYSCREEN'
+import base64, io
+from PIL import Image
+for name in ['upgrade-screen', 'toolbar-menu', 'large-font-screen']:
+    im = Image.open('startup-reports/' + name + '.png')
+    im.thumbnail((360, 800))
+    output = io.BytesIO(); im.convert('RGB').save(output, format='JPEG', quality=80)
+    print('RAILCARD_SCREEN_' + name + '=' + base64.b64encode(output.getvalue()).decode())
+PYSCREEN
+
+
 # Recovery must remain available even when the normal screen failed on the device.
 adb shell am force-stop "$package"
 printf 'Diagnostic startup fixture\n' > startup-reports/recovery-fixture.txt

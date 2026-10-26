@@ -180,7 +180,7 @@ fun HeroTripCard(
                                 )
                             } else {
                                 LightningBoltIcon(
-                                    modifier = Modifier.size(11.dp),
+                                    modifier = Modifier.size(12.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                                 Spacer(modifier = Modifier.width(3.dp))
@@ -519,7 +519,7 @@ fun HeroTripCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ClockDialIcon(
-                        modifier = Modifier.size(15.dp),
+                        modifier = Modifier.size(16.dp),
                         tint = if (isCompleted) Color(0xFF94A3B8) else Color(0xFF0284C7)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -690,6 +690,7 @@ fun HeroTripCard(
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "刷新途经时刻表",
+                            modifier = Modifier.size(22.dp),
                             tint = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -700,6 +701,7 @@ fun HeroTripCard(
                         Icon(
                             imageVector = Icons.Default.Archive,
                             contentDescription = "归档行程",
+                            modifier = Modifier.size(22.dp),
                             tint = MaterialTheme.colorScheme.outline
                         )
                     }
@@ -709,6 +711,7 @@ fun HeroTripCard(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "删除行程",
+                        modifier = Modifier.size(22.dp),
                         tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
                     )
                 }
