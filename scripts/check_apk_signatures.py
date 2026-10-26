@@ -13,10 +13,12 @@ reports.mkdir(exist_ok=True)
 digests = []
 for file in ("previous-apk/RailCard-v1.3.0.apk", "apk/RailCard-v1.3.1.apk"):
     result = subprocess.run([tools[-1], "verify", "--print-certs", file], check=True, capture_output=True, text=True)
-    digest = re.search(r"Signer #1 certificate SHA-256 digest: (\S+)", result.stdout)
+    output = result.stdout + result.stderr
+    print(output)
+    digest = re.search(r"certificate SHA-256 digest(?:\s*\([^)]*\))?:\s*([0-9a-fA-F:]{64,})", output, re.IGNORECASE)
     if not digest:
         raise SystemExit("Signing certificate missing: " + file)
-    digests.append(digest.group(1))
+    digests.append(digest.group(1).replace(":", "").lower())
     print(file + ": " + digest.group(1))
 (reports / "signing-certificates.txt").write_text("\n".join(digests))
 if digests[0] != digests[1]:
