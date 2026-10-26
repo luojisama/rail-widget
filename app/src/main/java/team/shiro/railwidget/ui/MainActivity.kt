@@ -133,6 +133,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (team.shiro.railwidget.diagnostics.CrashDiagnostics.read(this) != null) {
+            startActivity(Intent(this, team.shiro.railwidget.diagnostics.CrashReportActivity::class.java))
+            finish()
+            return
+        }
         enableEdgeToEdge()
         pendingAction = intent?.action
         setContent {

@@ -1,14 +1,13 @@
 name: Diagnose Android 13 startup
 on:
-  pull_request:
-    branches: [master]
-    paths: ['.github/workflows/startup-check.yml', 'scripts/check_upgrade_startup.sh']
+  workflow_dispatch:
+
 permissions:
   contents: read
   actions: read
 jobs:
   startup:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.repository == 'luojisama/rail-widget'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

@@ -15,6 +15,10 @@ class TripTimelineTest {
         ))
     private fun at(date: String, time: String) = TripTimeline.parse(date, time)!!
 
+    @Test fun legacyInvalidDatesCannotCrashStopRendering() {
+        val legacy = trip().copy(departureDate = "2026年10月26日")
+        assertNull(legacy.currentPosition(at("2026-10-26", "23:35")))
+    }
     @Test fun acceptsSingleDigitHoursFromImportedTickets() {
         assertEquals(at("2026-10-26", "08:00"), TripTimeline.parse("2026-10-26", "8:00"))
     }

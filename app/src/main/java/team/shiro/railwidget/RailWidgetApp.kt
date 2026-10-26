@@ -5,8 +5,14 @@ import team.shiro.railwidget.data.local.TripDatabaseHelper
 
 class RailWidgetApp : Application() {
 
+    override fun attachBaseContext(base: android.content.Context) {
+        super.attachBaseContext(base)
+        team.shiro.railwidget.diagnostics.CrashDiagnostics.install(this)
+    }
+
     override fun onCreate() {
         super.onCreate()
+        if (team.shiro.railwidget.diagnostics.CrashDiagnostics.read(this) != null) return
         val db = TripDatabaseHelper.getInstance(this)
         team.shiro.railwidget.sync.TripRefresh.initialize(this)
         // Default placeholder settings (no private credentials)

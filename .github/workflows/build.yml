@@ -7,6 +7,10 @@ on:
     branches: [ "master", "main" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     name: Build & Test RailWidget APK
@@ -69,7 +73,92 @@ jobs:
       - name: Upload RailCard APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RailCard-1.3.0-APK
+          name: RailCard-1.3.1-APK
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 14
 
+
+  startup:
+    name: Android 13 startup and upgrade
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.1-APK
+          path: apk
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.0-APK
+          path: previous-apk
+          run-id: 40307777296
+          github-token: ${{ github.token }}
+      - name: Check upgrade signing certificate
+        run: python3 scripts/check_apk_signatures.py
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch APK and check old data upgrade
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          arch: x86_64
+          profile: pixel_5
+          disable-animations: true
+          script: |
+            adb install apk/RailCard-v1.3.1.apk
+            adb logcat -c
+            adb shell am start -W -n team.shiro.railwidget/.ui.MainActivity
+            sleep 10
+            adb logcat -d -b crash > startup-reports/fresh-crash.txt
+            cat startup-reports/fresh-crash.txt
+            adb shell pidof team.shiro.railwidget
+            ! grep -Eq 'FATAL EXCEPTION|Fatal signal' startup-reports/fresh-crash.txt
+            bash scripts/check_upgrade_startup.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Android13-Startup-Reports
+          path: startup-reports/
+
+  publish-preview:
+    name: Publish tested diagnostic APK
+    needs: [build, startup]
+    if: github.repository == 'luojisama/rail-widget' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/railcard-live-refresh'
+    permissions:
+      contents: write
+      actions: read
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.1-APK
+          path: apk
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const tag = 'v1.3.1-preview.1';
+            const name = 'RailCard-v1.3.1.apk';
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+              if (!release.prerelease) throw new Error('Refusing to change stable release');
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              release = (await github.rest.repos.createRelease({
+                ...context.repo, tag_name: tag, target_commitish: context.payload.pull_request.head.sha,
+                name: '铁行卡片 v1.3.1 启动排查版', prerelease: true, make_latest: 'false',
+                body: '修复旧日期数据可能导致的站点渲染越界；新增本地崩溃报告。Android 13 全新启动、旧数据库升级启动与报告页检查通过。尚未复现 MIUI 14 真机白屏闪退，若仍退出，请再次打开应用并复制错误信息。行程和设置不会被清除。'
+              })).data;
+            }
+            const existing = release.assets.find(asset => asset.name === name);
+            if (!existing) {
+              await github.rest.repos.uploadReleaseAsset({...context.repo, release_id: release.id, name,
+                data: fs.readFileSync('apk/' + name)});
+            }
+            await core.summary.addLink('直接下载 APK', 'https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/releases/download/' + tag + '/' + name).write();

@@ -41,3 +41,15 @@ adb shell uiautomator dump /sdcard/railcard-window.xml
 adb pull /sdcard/railcard-window.xml startup-reports/upgrade-window.xml
 adb exec-out screencap -p > startup-reports/upgrade-screen.png
 adb shell run-as "$package" cat databases/rail_widget.db > startup-reports/upgraded-test.db
+
+# Recovery must remain available even when the normal screen failed on the device.
+adb shell am force-stop "$package"
+printf 'Diagnostic startup fixture\n' > startup-reports/recovery-fixture.txt
+adb push startup-reports/recovery-fixture.txt /data/local/tmp/railcard-crash.txt
+adb shell run-as "$package" cp /data/local/tmp/railcard-crash.txt files/last-startup-crash.txt
+adb shell am start -W -n "$package/.ui.MainActivity"
+sleep 3
+adb shell uiautomator dump /sdcard/railcard-recovery.xml
+adb pull /sdcard/railcard-recovery.xml startup-reports/recovery-window.xml
+grep -q '复制错误信息' startup-reports/recovery-window.xml
+adb shell run-as "$package" rm files/last-startup-crash.txt

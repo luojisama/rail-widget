@@ -1,9 +1,6 @@
 name: Publish validated preview APK
 
 on:
-  pull_request:
-    branches: [master]
-    paths: ['.github/workflows/publish-preview.yml']
   workflow_dispatch:
 
 permissions:
@@ -67,3 +64,4 @@ jobs:
             }
             await core.summary.addLink('直接下载 APK', asset.browser_download_url).write();
             core.info(asset.browser_download_url);
+

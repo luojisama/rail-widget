@@ -58,6 +58,7 @@ object TripTimeline {
 
     fun position(trip: Trip, now: Long): Position? {
         val events = events(trip)
+        if (events.size != trip.stops.size) return null
         val board = trip.stops.indexOfFirst { station(it.stationName) == station(trip.departureStation) }
         val end = trip.stops.indices.firstOrNull { it > board && station(trip.stops[it].stationName) == station(trip.arrivalStation) } ?: return null
         if (board < 0) return null
