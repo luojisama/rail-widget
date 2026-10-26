@@ -56,9 +56,16 @@ object TripRefresh {
             if (current.trainCode != trip.trainCode || current.departureDate != trip.departureDate ||
                 current.departureStation != trip.departureStation || current.arrivalStation != trip.arrivalStation) return@forEach
             if (enriched.dataCheckedAt > trip.dataCheckedAt) {
-                db.insertOrUpdateTrip(enriched.copy(isArchived = current.isArchived,
+                db.insertOrUpdateTrip(current.copy(
+                    trainNo = enriched.trainNo, stops = enriched.stops,
+                    departureTime = if (current.departureTime == trip.departureTime) enriched.departureTime else current.departureTime,
+                    arrivalTime = if (current.arrivalTime == trip.arrivalTime) enriched.arrivalTime else current.arrivalTime,
                     ticketGate = if (current.ticketGateManual) current.ticketGate else enriched.ticketGate,
-                    ticketGateManual = current.ticketGateManual))
+                    trainModel = enriched.trainModel, railwayBureau = enriched.railwayBureau,
+                    diningCar = enriched.diningCar, platform = enriched.platform,
+                    totalMileageKm = enriched.totalMileageKm, rideMileageKm = enriched.rideMileageKm,
+                    arrivalDayOffset = enriched.arrivalDayOffset, dataSource = enriched.dataSource,
+                    dataCheckedAt = enriched.dataCheckedAt, liveCheckedAt = enriched.liveCheckedAt))
                 updated++
             }
         }

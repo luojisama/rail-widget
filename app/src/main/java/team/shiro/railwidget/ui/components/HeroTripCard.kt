@@ -923,7 +923,7 @@ fun TimetableTable(
             stopList.forEachIndexed { index, stop ->
                 val isBoarding = index == boardingIndex
                 val isAlighting = index == alightingIndex
-                val isCurrent = position?.index == index && position.atStation
+                val isCurrent = position != null && position.index == index && position.atStation
                 val isKeyStop = isBoarding || isAlighting || isCurrent
                 val isInRideSpan = boardingIndex in 0 until alightingIndex && index in (boardingIndex + 1) until alightingIndex
 

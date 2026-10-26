@@ -94,7 +94,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             put("carriage", trip.carriage)
             put("seat", trip.seat)
             put("seat_type", trip.seatType)
-            put("ticket_gate", trip.ticketGate)
+            put("ticket_gate", if (existing?.ticketGateManual == true && !trip.ticketGateManual && trip.dataCheckedAt == 0L) existing.ticketGate else trip.ticketGate)
             put("ticket_type", trip.ticketType)
             put("price", trip.price)
             put("stopover_time", trip.stopoverTime)

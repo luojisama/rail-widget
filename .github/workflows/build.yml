@@ -34,6 +34,24 @@ jobs:
       - name: Android Lint
         run: ./gradlew lintDebug
 
+      - name: Print lint errors
+        if: always()
+        run: |
+          python3 - <<'PYLINT'
+          import pathlib, xml.etree.ElementTree as ET
+          path = pathlib.Path('app/build/reports/lint-results-debug.xml')
+          if path.exists():
+              for issue in ET.parse(path).findall('issue'):
+                  if issue.get('severity') in ('Error', 'Fatal'):
+                      print(issue.attrib)
+                      for location in issue.findall('location'):
+                          print(location.attrib)
+          PYLINT
+
+      - name: Public train source smoke check
+        if: always()
+        run: python3 scripts/check_train_sources.py
+
       - name: Upload test and lint reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -42,6 +60,7 @@ jobs:
           path: |
             app/build/reports/tests/
             app/build/reports/lint-results-debug.*
+            app/build/reports/source-smoke.json
           retention-days: 14
 
       - name: Build RailCard APK

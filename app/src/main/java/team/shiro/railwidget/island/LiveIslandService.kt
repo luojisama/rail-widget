@@ -121,8 +121,7 @@ class LiveIslandService : Service() {
         currentOrderNo = refreshed.orderNo
 
         islandView?.updateTrip(refreshed)
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFICATION_ID, buildForegroundNotification(refreshed))
+        notifyTrip(refreshed)
 
         // 统一计算并调度下一次探测或倒计时刷新
         scheduleNextCheck(refreshed)
@@ -180,8 +179,7 @@ class LiveIslandService : Service() {
                 currentTrip = nextTransfer
                 currentOrderNo = nextTransfer.orderNo
                 islandView?.updateTrip(nextTransfer)
-                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                nm.notify(NOTIFICATION_ID, buildForegroundNotification(nextTransfer))
+                notifyTrip(nextTransfer)
 
                 // 同步广播通知桌面小组件局部更新
                 val widgetIntent = Intent("team.shiro.railwidget.action.REFRESH_WIDGET").apply {
@@ -236,6 +234,13 @@ class LiveIslandService : Service() {
             team.shiro.railwidget.sync.TripRefresh.enqueue(this)
         }
         handler.postDelayed(tickerRunnable, 60_000L)
+    }
+
+    private fun notifyTrip(trip: Trip) {
+        if (Build.VERSION.SDK_INT < 33 || androidx.core.content.ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildForegroundNotification(trip))
+        }
     }
 
     private fun buildForegroundNotification(trip: Trip): Notification {

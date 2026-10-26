@@ -88,7 +88,7 @@ class LiveIslandView(private val context: Context) {
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = capsuleTopY
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             }
         }
@@ -117,7 +117,7 @@ class LiveIslandView(private val context: Context) {
             override fun onViewDetachedFromWindow(v: View) {}
         })
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             rootContainer.setOnApplyWindowInsetsListener { v, insets ->
                 val cutout = insets.displayCutout?.boundingRectTop
                 if (cutout != null && !cutout.isEmpty) {
@@ -347,7 +347,7 @@ class LiveIslandView(private val context: Context) {
      * 自动探测并读取前摄硬件挖孔位置 (DisplayCutout)
      */
     private fun detectCameraCutout(view: View): Rect? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val insetsCutout = view.rootWindowInsets?.displayCutout?.boundingRectTop
             if (insetsCutout != null && !insetsCutout.isEmpty) return insetsCutout
         }

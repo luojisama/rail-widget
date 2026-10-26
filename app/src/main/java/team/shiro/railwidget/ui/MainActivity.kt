@@ -251,7 +251,7 @@ class MainActivity : ComponentActivity() {
             if (pending != null && IslandPermissionHelper.hasOverlayPermission(context)) {
                 pendingIslandOrderNo = null
                 val started = LiveIslandService.start(context, pending)
-                isIslandRunning = started
+                isIslandRunning = started && LiveIslandService.isServiceRunning
                 activeIslandOrderNo = pending
                 scope.launch {
                     snackbarHostState.showSnackbar(if (started) "灵动岛启动请求已发送" else db.getSetting("island_start_status"))
@@ -337,14 +337,14 @@ class MainActivity : ComponentActivity() {
                     showIslandPermissionDialog = true
                 } else {
                     val started = LiveIslandService.start(context, orderNo)
-                    isIslandRunning = started
+                    isIslandRunning = started && LiveIslandService.isServiceRunning
                     activeIslandOrderNo = orderNo
                     scope.launch {
                         val isPastTrip = targetTrip?.let { it.getStage() == TripStage.COMPLETED } ?: false
                         val tip = if (isPastTrip) {
-                            "已开启历史车次胶囊预览，可随时点击关闭"
+                            "历史车次胶囊启动请求已发送"
                         } else {
-                            "已开启灵动胶囊，实时显示发车倒计时与检票口"
+                            "灵动岛启动请求已发送"
                         }
                         snackbarHostState.showSnackbar(if (started) tip else db.getSetting("island_start_status", "灵动岛启动失败"))
                     }

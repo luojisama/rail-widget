@@ -80,12 +80,10 @@ object LulutongData {
             while (true) {
                 val entry = zip.nextEntry ?: break
                 check(++count <= 512)
-                if (entry.name in setOf("routes.dat", "jlb.dat")) {
-                    val data = zip.readBytesBounded(16 * 1024 * 1024)
-                    total += data.size
-                    check(total <= MAX_PACKAGE)
-                    result[entry.name] = data
-                }
+                val data = zip.readBytesBounded(16 * 1024 * 1024)
+                total += data.size
+                check(total <= 64 * 1024 * 1024)
+                if (entry.name in setOf("routes.dat", "jlb.dat")) result[entry.name] = data
                 zip.closeEntry()
             }
         }
