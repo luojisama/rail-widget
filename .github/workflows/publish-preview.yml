@@ -1,0 +1,69 @@
+name: Publish validated preview APK
+
+on:
+  pull_request:
+    branches: [master]
+    paths: ['.github/workflows/publish-preview.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: github.repository == 'luojisama/rail-widget' && (github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'codex/railcard-live-refresh'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify validated build
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {data: run} = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: 40307777296
+            });
+            if (run.conclusion !== 'success' || run.head_sha !== '606ba971d9eec5ce200ab0d2715b73da40dd2e2a') {
+              throw new Error('The preview must use the validated v1.3.0 build.');
+            }
+
+      - name: Download validated APK
+        uses: actions/download-artifact@v4
+        with:
+          name: RailCard-1.3.0-APK
+          path: apk
+          run-id: 40307777296
+          github-token: ${{ github.token }}
+
+      - name: Publish APK as prerelease asset
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const tag = 'v1.3.0-preview.1';
+            const name = 'RailCard-v1.3.0.apk';
+            const file = path.join('apk', name);
+            if (!fs.existsSync(file)) throw new Error('Validated APK was not found.');
+            let release;
+            try {
+              release = (await github.rest.repos.getReleaseByTag({...context.repo, tag})).data;
+              if (!release.prerelease) throw new Error('Refusing to modify a stable release.');
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              release = (await github.rest.repos.createRelease({
+                ...context.repo, tag_name: tag,
+                target_commitish: '606ba971d9eec5ce200ab0d2715b73da40dd2e2a',
+                name: '铁行卡片 v1.3.0 验收版',
+                prerelease: true, make_latest: 'false',
+                body: '分支验收包，直接下载下方 APK 安装，无需解压。\n\n包含快捷刷新、灵动岛定时恢复、途中站点及列车资料展示。单元测试、Lint 和 APK 构建已通过。MIUI 14 锁屏定时唤起仍需真机验收；接口缺失字段显示暂无，无实时到发时标注时刻表推算。\n\n更新内容：https://github.com/luojisama/rail-widget/pull/1\n验收清单：https://github.com/luojisama/rail-widget/blob/606ba971d9eec5ce200ab0d2715b73da40dd2e2a/docs/acceptance-1.3.0.md'
+              })).data;
+            }
+            let asset = release.assets.find(asset => asset.name === name);
+            if (!asset) {
+              asset = (await github.rest.repos.uploadReleaseAsset({
+                ...context.repo, release_id: release.id, name,
+                data: fs.readFileSync(file)
+              })).data;
+            }
+            await core.summary.addLink('直接下载 APK', asset.browser_download_url).write();
+            core.info(asset.browser_download_url);
