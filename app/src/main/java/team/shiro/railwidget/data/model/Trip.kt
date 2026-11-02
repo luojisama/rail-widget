@@ -13,7 +13,8 @@ data class StopInfo(
     val arrivalDay: Int? = null,
     val departureDay: Int? = null,
     val actualArrival: Long? = null,
-    val actualDeparture: Long? = null
+    val actualDeparture: Long? = null,
+    val platformReference: Boolean = false
 )
 
 enum class TripStage(val title: String) {
@@ -54,7 +55,12 @@ data class Trip(
     val dataSource: String = "",
     val dataCheckedAt: Long = 0,
     val liveCheckedAt: Long = 0,
-    val ticketGateManual: Boolean = false
+    val ticketGateManual: Boolean = false,
+    val crewDepot: String = "",
+    val formation: String = "",
+    val diningCarNote: String = "",
+    val platformReference: Boolean = false,
+    val lulutongVersion: String = ""
 ) {
     /**
      * 计算行程处于哪个核心阶段：未出行、在途中、已结束
@@ -104,5 +110,3 @@ data class Trip(
         return if (raw.isBlank()) "暂无" else raw
     }
 }
-
-

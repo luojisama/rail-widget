@@ -126,7 +126,10 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
                 diningCar = enriched.diningCar, platform = enriched.platform,
                 totalMileageKm = enriched.totalMileageKm, rideMileageKm = enriched.rideMileageKm,
                 arrivalDayOffset = enriched.arrivalDayOffset, dataSource = enriched.dataSource,
-                dataCheckedAt = enriched.dataCheckedAt, liveCheckedAt = enriched.liveCheckedAt))
+                dataCheckedAt = enriched.dataCheckedAt, liveCheckedAt = enriched.liveCheckedAt,
+                crewDepot = enriched.crewDepot, formation = enriched.formation,
+                diningCarNote = enriched.diningCarNote, platformReference = enriched.platformReference,
+                lulutongVersion = enriched.lulutongVersion))
             return true
         }
         return false
@@ -284,7 +287,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             ticketType = c.getString(c.getColumnIndexOrThrow("ticket_type")) ?: "成人票",
             price = c.getString(c.getColumnIndexOrThrow("price")) ?: "",
             stopoverTime = c.getString(c.getColumnIndexOrThrow("stopover_time")) ?: "",
-            stops = deserializeStops(c.getString(c.getColumnIndexOrThrow("stops_json"))),
+            stops = deserializeStops(c.getString(c.getColumnIndexIndexSafe("stops_json"))),
             detailUrl = if (c.getColumnIndex("detail_url") != -1) c.getString(c.getColumnIndexOrThrow("detail_url")) ?: "" else "",
             rawSource = c.getString(c.getColumnIndexOrThrow("raw_source")) ?: "LOCAL",
             updatedAt = c.getLong(c.getColumnIndexOrThrow("updated_at")),
@@ -294,9 +297,14 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
             totalMileageKm = meta.number("totalMileageKm"), rideMileageKm = meta.number("rideMileageKm"),
             arrivalDayOffset = meta.number("arrivalDayOffset")?.toInt(),
             dataSource = meta.optString("dataSource"), dataCheckedAt = meta.optLong("dataCheckedAt"),
-            liveCheckedAt = meta.optLong("liveCheckedAt"), ticketGateManual = meta.optBoolean("ticketGateManual")
+            liveCheckedAt = meta.optLong("liveCheckedAt"), ticketGateManual = meta.optBoolean("ticketGateManual"),
+            crewDepot = meta.optString("crewDepot"), formation = meta.optString("formation"),
+            diningCarNote = meta.optString("diningCarNote"), platformReference = meta.optBoolean("platformReference"),
+            lulutongVersion = meta.optString("lulutongVersion")
         )
     }
+
+    private fun android.database.Cursor.getColumnIndexIndexSafe(name: String): Int = getColumnIndexOrThrow(name)
 
     private fun JSONObject.number(key: String): Double? = if (isNull(key)) null else optDouble(key).takeIf { it.isFinite() }
 
@@ -307,6 +315,9 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         put("arrivalDayOffset", trip.arrivalDayOffset); put("dataSource", trip.dataSource)
         put("dataCheckedAt", trip.dataCheckedAt); put("liveCheckedAt", trip.liveCheckedAt)
         put("ticketGateManual", trip.ticketGateManual)
+        put("crewDepot", trip.crewDepot); put("formation", trip.formation)
+        put("diningCarNote", trip.diningCarNote); put("platformReference", trip.platformReference)
+        put("lulutongVersion", trip.lulutongVersion)
     }
 
     private fun serializeStops(stops: List<StopInfo>): String {
@@ -321,6 +332,7 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
                 put("lineMileage", s.lineMileage); put("mileageKm", s.mileageKm); put("platform", s.platform); put("ticketGate", s.ticketGate)
                 put("arrivalDay", s.arrivalDay); put("departureDay", s.departureDay)
                 put("actualArrival", s.actualArrival); put("actualDeparture", s.actualDeparture)
+                put("platformReference", s.platformReference)
             }
             array.put(obj)
         }
@@ -343,7 +355,8 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
                         stopoverTime = o.optString("stopover"),
                         lineMileage = o.optString("lineMileage"), mileageKm = o.number("mileageKm"), platform = o.optString("platform"), ticketGate = o.optString("ticketGate"),
                         arrivalDay = o.number("arrivalDay")?.toInt(), departureDay = o.number("departureDay")?.toInt(),
-                        actualArrival = o.number("actualArrival")?.toLong(), actualDeparture = o.number("actualDeparture")?.toLong()
+                        actualArrival = o.number("actualArrival")?.toLong(), actualDeparture = o.number("actualDeparture")?.toLong(),
+                        platformReference = o.optBoolean("platformReference")
                     )
                 )
             }
@@ -351,4 +364,3 @@ class TripDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DB_NAME, 
         return list
     }
 }
-
