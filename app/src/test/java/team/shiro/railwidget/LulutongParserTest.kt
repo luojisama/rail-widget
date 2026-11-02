@@ -111,11 +111,19 @@ class LulutongParserTest {
     @Test fun parsesBureauAndDepotCorrectly() {
         assertEquals(Pair("上海局", "上海段"), LulutongData.parseBureauAndDepot("上局上海段"))
         assertEquals(Pair("广州局", "广九段"), LulutongData.parseBureauAndDepot("广铁广九段"))
+        assertEquals(Pair("广州局", "长沙段"), LulutongData.parseBureauAndDepot("广铁长沙段"))
+        assertEquals(Pair("广州局", "长沙客运段"), LulutongData.parseBureauAndDepot("长沙客运段"))
         assertEquals(Pair("北京局", "北京客运段"), LulutongData.parseBureauAndDepot("京局北京客运段"))
         assertEquals(Pair("哈尔滨局", "牡丹江段"), LulutongData.parseBureauAndDepot("哈局牡丹江段"))
         assertEquals(Pair("青藏铁路公司", "西宁段"), LulutongData.parseBureauAndDepot("青藏公司西宁段"))
         assertEquals(Pair("南昌局", ""), LulutongData.parseBureauAndDepot("南昌局"))
         assertEquals(Pair("", ""), LulutongData.parseBureauAndDepot("暂无"))
+    }
+
+    @Test fun parsesCompactDiningCorrectly() {
+        assertEquals(Pair("09车", "无餐座"), LulutongData.parseCompactDining("9车无餐座"))
+        assertEquals(Pair("05车", "餐吧"), LulutongData.parseCompactDining("5车餐吧"))
+        assertEquals(Pair("", "餐车代硬座"), LulutongData.parseCompactDining("餐车代硬座"))
     }
 
     @Test fun endToEndEnrichFromCache() {
@@ -183,12 +191,23 @@ class LulutongParserTest {
         jlbDos.writeByte(trainsBytes.size)
         jlbDos.write(trainsBytes)
 
+        // 6. T0.dat (17-byte train header + 7-byte stop entries)
+        val t0Out = ByteArrayOutputStream()
+        t0Out.write(byteArrayOf(0, 0)) // trainIdx = 0
+        t0Out.write(ByteArray(14))     // 14-byte header
+        t0Out.write(2)                 // stopCnt = 2
+        // stop 0: stationIdx=0 (0,0), h=8, m=0, dwell=0, km=0 (0,0)
+        t0Out.write(byteArrayOf(0, 0, 8, 0, 0, 0, 0))
+        // stop 1: stationIdx=1 (0,1), h=12, m=30, dwell=0, km=1318 (5*255+43 -> 5,43)
+        t0Out.write(byteArrayOf(0, 1, 12, 30, 0, 5, 43))
+
         val entries = mapOf(
             "extra.dat" to extraOut.toByteArray(),
             "t.i" to tiOut.toByteArray(),
             "s.i" to siOut.toByteArray(),
             "plat.dat" to platOut.toByteArray(),
-            "jlb.dat" to jlbOut.toByteArray()
+            "jlb.dat" to jlbOut.toByteArray(),
+            "T0.dat" to t0Out.toByteArray()
         )
 
         val cache = LulutongData.parsePackage(entries, "20261108")
@@ -218,6 +237,10 @@ class LulutongParserTest {
         assertTrue(enriched.platformReference)
         assertEquals("7", enriched.stops[0].platform)
         assertTrue(enriched.stops[0].platformReference)
+        assertEquals(0.0, enriched.stops[0].mileageKm!!, 0.01)
+        assertEquals(1318.0, enriched.stops[1].mileageKm!!, 0.01)
+        assertEquals(1318.0, enriched.rideMileageKm!!, 0.01)
+        assertEquals(1318.0, enriched.totalMileageKm!!, 0.01)
         assertEquals("", enriched.stops[1].platform)
         assertFalse(enriched.stops[1].platformReference)
         assertEquals("20261108", enriched.lulutongVersion)

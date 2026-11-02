@@ -9,6 +9,11 @@ import team.shiro.railwidget.data.model.StopInfo
 object TrainDetails {
     private fun JSONObject.text(key: String) = optString(key).takeUnless { it == "null" || it == "--" }?.trim().orEmpty()
 
+    private fun cleanWicket(raw: String): String {
+        if (raw.isBlank()) return ""
+        return raw.replace("检票口", "").trim().trim(',', '，', '、')
+    }
+
     fun applyInfo(trip: Trip, response: JSONObject, now: Long): Trip {
         val detail = response.optJSONObject("data")?.optJSONObject("trainDetail") ?: return trip
         val codes = detail.text("stationTrainCodeAll").split('/', '／', ',')
@@ -31,8 +36,9 @@ object TrainDetails {
             val row = matches.singleOrNull() ?: matches.find { it.text("stationNo").toIntOrNull() == stop.stationNo.toIntOrNull() }
             if (row == null) stop else {
                 val officialPlatform = row.text("platform")
+                val cleanedGate = cleanWicket(row.text("wicket"))
                 stop.copy(
-                    ticketGate = row.text("wicket").ifBlank { stop.ticketGate },
+                    ticketGate = cleanedGate.ifBlank { stop.ticketGate },
                     // A gate is not a platform. Only the explicitly named platform field is accepted.
                     platform = officialPlatform.ifBlank { stop.platform },
                     platformReference = if (officialPlatform.isNotBlank()) false else stop.platformReference,
@@ -69,13 +75,32 @@ object TrainDetails {
         val model = data.text("trainStyle")
         val info = data.optJSONArray("carInfo")
         var dining = ""
+        val formationParts = mutableListOf<String>()
         for (i in 0 until (info?.length() ?: 0)) {
             val row = info!!.getJSONObject(i)
-            if (row.text("pictureName") in listOf("餐车", "餐车位置", "餐车车厢")) dining = row.text("pictureValue")
+            val pName = row.text("pictureName")
+            val pVal = row.text("pictureValue")
+            if (pVal.isBlank()) continue
+            when (pName) {
+                "餐车", "餐车位置", "餐车车厢" -> dining = pVal
+                "列车编组", "最高时速" -> formationParts += pVal
+            }
         }
-        if (model.isBlank() && dining.isBlank()) return trip
-        return trip.copy(trainModel = model.ifBlank { trip.trainModel }, diningCar = dining.ifBlank { trip.diningCar },
-            dataCheckedAt = now, dataSource = (trip.dataSource.split(" · ") + "12306车型").filter { it.isNotBlank() }.distinct().joinToString(" · "))
+        val styleFormation = formationParts.joinToString(" ")
+        if (model.isBlank() && dining.isBlank() && styleFormation.isBlank()) return trip
+        val mergedFormation = when {
+            trip.formation.isNotBlank() && styleFormation.isNotBlank() && !trip.formation.contains(styleFormation) ->
+                "$styleFormation · ${trip.formation}"
+            trip.formation.isNotBlank() -> trip.formation
+            else -> styleFormation
+        }
+        return trip.copy(
+            trainModel = model.ifBlank { trip.trainModel },
+            diningCar = dining.ifBlank { trip.diningCar },
+            formation = mergedFormation,
+            dataCheckedAt = now,
+            dataSource = (trip.dataSource.split(" · ") + "12306车型").filter { it.isNotBlank() }.distinct().joinToString(" · ")
+        )
     }
 
     private fun timestamp(value: String): Long? {

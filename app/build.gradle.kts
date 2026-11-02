@@ -12,8 +12,8 @@ android {
         applicationId = "team.shiro.railwidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 28
-        versionName = "1.4.0"
+        versionCode = 29
+        versionName = "1.4.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

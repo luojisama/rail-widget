@@ -53,13 +53,28 @@ object TripRefresh {
     fun refresh(context: Context, orderNo: String? = null, force: Boolean = false): Result {
         val db = TripDatabaseHelper.getInstance(context)
         val now = System.currentTimeMillis()
-        val trips = if (orderNo != null) listOfNotNull(db.getTrip(orderNo)) else db.getActiveTrips().filter {
-            it.getDepartureTimeMillis() - now <= 86_400_000L && now < it.getArrivalTimeMillis() + 900_000L
+        val trips = if (orderNo != null) {
+            listOfNotNull(db.getTrip(orderNo))
+        } else {
+            val activeWindow = db.getActiveTrips().filter {
+                it.getDepartureTimeMillis() - now <= 86_400_000L && now < it.getArrivalTimeMillis() + 900_000L
+            }
+            if (force) {
+                val extra = db.getAllTrips()
+                    .filter { t -> activeWindow.none { it.orderNo == t.orderNo } }
+                    .sortedByDescending { it.departureDate }
+                    .filter { it.lulutongVersion.isBlank() || it.rideMileageKm == null || it.stops.isEmpty() }
+                    .take(5)
+                activeWindow + extra
+            } else {
+                activeWindow
+            }
         }
         var updated = 0
+        var requestedCount = trips.size
         trips.forEach { trip ->
             val last = attempts[trip.orderNo] ?: 0L
-            if (now - last < if (force) 10_000L else 300_000L) {
+            if (now - last < if (force) 3_000L else 300_000L) {
                 if (trip.dataCheckedAt > 0 && trip.dataCheckedAt >= last) updated++
                 return@forEach
             }
@@ -67,8 +82,24 @@ object TripRefresh {
             val enriched = LulutongData.enrich(context, RailwayApiService.enrichTrip(trip))
             if (db.applyTrainEnrichment(trip, enriched)) updated++
         }
+
+        // Fast offline/cached Lulutong pass for all remaining trips missing mileage, platform, or bureau
+        if (orderNo == null) {
+            val allTrips = db.getAllTrips()
+            for (t in allTrips) {
+                if (trips.any { it.orderNo == t.orderNo }) continue
+                if (t.lulutongVersion.isBlank() || t.rideMileageKm == null || t.platform.isBlank() || t.railwayBureau.endsWith("段")) {
+                    val lltEnriched = LulutongData.enrich(context, t)
+                    if (lltEnriched != t && db.applyTrainEnrichment(t, lltEnriched)) {
+                        updated++
+                        requestedCount++
+                    }
+                }
+            }
+        }
+
         publish(context)
-        return Result(trips.size, updated)
+        return Result(requestedCount, updated)
     }
 
     fun publish(context: Context) {

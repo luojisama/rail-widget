@@ -28,10 +28,18 @@ object RailwayApiService {
      */
     fun enrichTrip(trip: Trip): Trip {
         val now = System.currentTimeMillis()
-        val trainNo = queryTrainNo(trip.trainCode, trip.departureDate.replace("-", "")) ?: trip.trainNo
+        val todayStandard = SimpleDateFormat("yyyy-MM-dd", Locale.CHINA).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+        }.format(Date(now))
+        val todayCompact = todayStandard.replace("-", "")
+        val depCompact = trip.departureDate.replace("-", "")
+        val trainNo = queryTrainNo(trip.trainCode, depCompact)
+            ?: queryTrainNo(trip.trainCode, todayCompact)
+            ?: trip.trainNo
         var result = trip
         if (trainNo.isNotBlank()) {
             val stops = queryTimetable(trainNo, trip.departureDate, trip.departureStation, trip.arrivalStation)
+                .ifEmpty { queryTimetable(trainNo, todayStandard, trip.departureStation, trip.arrivalStation) }
             val dep = stops.indexOfFirst { cleanStation(it.stationName) == cleanStation(trip.departureStation) }
             val effectiveArrival = if (trip.arrivalStation.isBlank() || trip.arrivalStation in listOf("到达站", "终点站"))
                 stops.lastOrNull()?.stationName ?: trip.arrivalStation else trip.arrivalStation
@@ -50,26 +58,60 @@ object RailwayApiService {
             }
             if (!trip.ticketGateManual) {
                 val gate = queryTicketGate(trip.trainCode, trainNo, trip.departureStation, trip.departureDate)
+                    ?: queryTicketGate(trip.trainCode, trainNo, trip.departureStation, todayStandard)
                 if (!gate.isNullOrBlank()) result = result.copy(ticketGate = gate, dataCheckedAt = now)
             }
         }
         // Details APIs use the train origin date, which can precede a mid-route ticket's date.
         val originDate = team.shiro.railwidget.data.model.TripTimeline.originDate(result)
+        val originCompact = originDate.replace("-", "")
         runCatching {
-            val form = FormBody.Builder().add("trainCode", trip.trainCode).add("startDay", originDate.replace("-", "")).build()
+            val form = FormBody.Builder().add("trainCode", trip.trainCode).add("startDay", originCompact).build()
             val request = Request.Builder().url("https://mobile.12306.cn/wxxcx/wechat/main/travelServiceQrcodeTrainInfo")
                 .header("User-Agent", USER_AGENT).post(form).build()
             client.newCall(request).execute().use { response ->
                 if (response.isSuccessful) result = TrainDetails.applyInfo(result, JSONObject(response.body?.string() ?: "{}"), now)
             }
         }
+        if (originCompact != todayCompact && (result.ticketGate.isBlank() || result.trainModel.isBlank())) {
+            runCatching {
+                val form = FormBody.Builder().add("trainCode", trip.trainCode).add("startDay", todayCompact).build()
+                val request = Request.Builder().url("https://mobile.12306.cn/wxxcx/wechat/main/travelServiceQrcodeTrainInfo")
+                    .header("User-Agent", USER_AGENT).post(form).build()
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val fallback = TrainDetails.applyInfo(result, JSONObject(response.body?.string() ?: "{}"), now)
+                        result = result.copy(
+                            ticketGate = if (result.ticketGateManual) result.ticketGate else result.ticketGate.ifBlank { fallback.ticketGate },
+                            platform = result.platform.ifBlank { fallback.platform },
+                            platformReference = if (result.platform.isBlank() && fallback.platform.isNotBlank()) true else result.platformReference,
+                            trainModel = result.trainModel.ifBlank { fallback.trainModel },
+                            railwayBureau = result.railwayBureau.ifBlank { fallback.railwayBureau },
+                            totalMileageKm = result.totalMileageKm ?: fallback.totalMileageKm,
+                            rideMileageKm = result.rideMileageKm ?: fallback.rideMileageKm
+                        )
+                    }
+                }
+            }
+        }
         runCatching {
             val url = okhttp3.HttpUrl.Builder().scheme("https").host("mobile.12306.cn")
                 .encodedPath("/wxxcx/openplatform-inner/miniprogram/wifiapps/appFrontEnd/v2/lounge/open-smooth-common/trainStyleBatch/getCarDetail")
-                .addQueryParameter("trainCode", trip.trainCode).addQueryParameter("runningDay", originDate.replace("-", ""))
+                .addQueryParameter("trainCode", trip.trainCode).addQueryParameter("runningDay", originCompact)
                 .addQueryParameter("reqType", "form").addQueryParameter("carCode", trip.trainCode).build()
             client.newCall(Request.Builder().url(url).header("User-Agent", USER_AGENT).build()).execute().use { response ->
                 if (response.isSuccessful) result = TrainDetails.applyStyle(result, JSONObject(response.body?.string() ?: "{}"), now)
+            }
+        }
+        if (originCompact != todayCompact && (result.diningCar.isBlank() || result.formation.isBlank())) {
+            runCatching {
+                val url = okhttp3.HttpUrl.Builder().scheme("https").host("mobile.12306.cn")
+                    .encodedPath("/wxxcx/openplatform-inner/miniprogram/wifiapps/appFrontEnd/v2/lounge/open-smooth-common/trainStyleBatch/getCarDetail")
+                    .addQueryParameter("trainCode", trip.trainCode).addQueryParameter("runningDay", todayCompact)
+                    .addQueryParameter("reqType", "form").addQueryParameter("carCode", trip.trainCode).build()
+                client.newCall(Request.Builder().url(url).header("User-Agent", USER_AGENT).build()).execute().use { response ->
+                    if (response.isSuccessful) result = TrainDetails.applyStyle(result, JSONObject(response.body?.string() ?: "{}"), now)
+                }
             }
         }
         return result
@@ -155,9 +197,6 @@ object RailwayApiService {
 
     /**
      * Query 12306 official station check-in gate for a specific train at the departure station.
-     * Flow:
-     * 1. GET queryStopStations to find departure station telecode (e.g. 北京南 -> VNP)
-     * 2. POST queryTicketCheck with trainDate, trainCode, and telecode
      */
     fun queryTicketGate(
         trainCode: String,
@@ -166,15 +205,6 @@ object RailwayApiService {
         dateStandard: String
     ): String? {
         try {
-            // Step 1: Query stop stations telecodes for this train
-            val stopStationsUrl = "https://www.12306.cn/index/otn/index12306/queryStopStations?train_no=$trainNo&depart_date=$dateStandard"
-            val stopReq = Request.Builder()
-                .url(stopStationsUrl)
-                .header("User-Agent", USER_AGENT)
-                .header("Referer", "https://www.12306.cn/index/view/infos/ticket_check.html")
-                .build()
-
-            var telecode: String? = null
             fun tryResolveTelecode(d: String): String? {
                 val stopStationsUrl = "https://www.12306.cn/index/otn/index12306/queryStopStations?train_no=$trainNo&depart_date=$d"
                 val stopReq = Request.Builder()
@@ -205,15 +235,14 @@ object RailwayApiService {
                 }
             }
 
-            telecode = tryResolveTelecode(dateStandard)
+            val telecode = tryResolveTelecode(dateStandard)
             if (telecode.isNullOrBlank()) return null
 
-            // Step 2: Query ticket check-in gate using telecode
             val checkUrl = "https://www.12306.cn/index/otn/index12306/queryTicketCheck"
             val formBody = FormBody.Builder()
                 .add("trainDate", dateStandard)
                 .add("station_train_code", trainCode)
-                .add("from_station_telecode", telecode!!)
+                .add("from_station_telecode", telecode)
                 .build()
 
             val checkReq = Request.Builder()
@@ -246,7 +275,6 @@ object RailwayApiService {
         val cleaned = raw.removePrefix("检票口").trim()
         if (cleaned.isBlank()) return ""
 
-        // e.g. "17A、17B" or "13A13B" or "17A 17B"
         val multiPattern = Regex("""^(\d+)([A-Za-z])[、,/ ]*(\d+)([A-Za-z])$""")
         val multiMatch = multiPattern.find(cleaned)
         if (multiMatch != null) {

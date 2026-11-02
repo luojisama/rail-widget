@@ -37,6 +37,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
@@ -317,9 +318,13 @@ class MainActivity : ComponentActivity() {
             lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (true) {
                     val now = System.currentTimeMillis()
-                    currentTime = now
-                    isIslandRunning = LiveIslandService.isServiceRunning
-                    activeIslandOrderNo = LiveIslandService.currentOrderNo
+                    if (now / 30_000L != currentTime / 30_000L) {
+                        currentTime = now
+                    }
+                    val running = LiveIslandService.isServiceRunning
+                    if (isIslandRunning != running) isIslandRunning = running
+                    val curOrder = LiveIslandService.currentOrderNo
+                    if (activeIslandOrderNo != curOrder) activeIslandOrderNo = curOrder
 
                     val currentTrips = trips
                     val hasInTransit = currentTrips.any { !it.isArchived && it.getStage(now) == TripStage.IN_TRANSIT }
@@ -340,7 +345,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    delay(1000L)
+                    delay(15_000L)
                 }
             }
         }
@@ -501,6 +506,11 @@ class MainActivity : ComponentActivity() {
                     pendingAction = null
                 }
             }
+            withContext(Dispatchers.IO) {
+                try {
+                    TripRefresh.refresh(context, force = false)
+                } catch (_: Exception) {}
+            }
         }
 
         fun triggerMailSync() {
@@ -554,8 +564,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // 行程三分类 (remember 记忆化，彻底杜绝无谓的重复耗时计算)
-        val (upcomingTrips, inTransitTrips, completedTrips) = remember(trips, currentTime) {
+        // 行程三分类 (按分钟粒度记忆化，彻底杜绝无谓的重复耗时计算与每秒重组)
+        val minuteBucket = currentTime / 60_000L
+        val (upcomingTrips, inTransitTrips, completedTrips) = remember(trips, minuteBucket) {
             val now = currentTime
             val upcoming = trips.filter { it.getStage(now) == TripStage.UPCOMING && !it.isArchived }
                 .sortedWith(compareBy({ it.departureDate }, { it.departureTime }))
@@ -566,12 +577,12 @@ class MainActivity : ComponentActivity() {
             Triple(upcoming, inTransit, completed)
         }
 
-        val latestCheckedAt = remember(trips, currentTime) {
+        val latestCheckedAt = remember(trips) {
             trips.filter { !it.isArchived }
                 .map { maxOf(it.dataCheckedAt, it.liveCheckedAt) }
                 .maxOrNull() ?: 0L
         }
-        val freshnessText = remember(latestCheckedAt, currentTime) {
+        val freshnessText = remember(latestCheckedAt, minuteBucket) {
             if (latestCheckedAt > 0L) TripRefresh.formatFreshness(latestCheckedAt, 0L, currentTime) else null
         }
 
@@ -708,15 +719,24 @@ class MainActivity : ComponentActivity() {
                 )
             }
         ) { paddingValues ->
+            val upcomingListState = rememberLazyListState()
+            val inTransitListState = rememberLazyListState()
+            val completedListState = rememberLazyListState()
             Crossfade(
                 targetState = selectedTabIndex,
-                animationSpec = tween(durationMillis = 180),
+                animationSpec = tween(durationMillis = 150),
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues),
                 label = "tabContentTransition"
             ) { targetTab ->
+                val listState = when (targetTab) {
+                    0 -> upcomingListState
+                    1 -> inTransitListState
+                    else -> completedListState
+                }
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
@@ -817,7 +837,7 @@ class MainActivity : ComponentActivity() {
                                             modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
                                         )
                                     }
-                                    items(upcomingTrips.drop(1), key = { it.orderNo }) { trip ->
+                                    items(upcomingTrips.drop(1), key = { it.orderNo }, contentType = { "trip_card" }) { trip ->
                                         val isNextTransfer = db.findPreviousTransferTrip(trip) != null
                                         HeroTripCard(
                                             now = currentTime,
@@ -841,8 +861,7 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onUpdateGate = { newGate ->
                                                 updateTripGate(trip.orderNo, newGate)
-                                            },
-                                            modifier = Modifier.animateItem()
+                                            }
                                         )
                                         Spacer(modifier = Modifier.height(12.dp))
                                     }
@@ -876,7 +895,7 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
                                     )
                                 }
-                                items(inTransitTrips, key = { it.orderNo }) { trip ->
+                                items(inTransitTrips, key = { it.orderNo }, contentType = { "trip_card" }) { trip ->
                                     HeroTripCard(
                                             now = currentTime,
                                         trip = trip,
@@ -897,8 +916,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onUpdateGate = { newGate ->
                                             updateTripGate(trip.orderNo, newGate)
-                                        },
-                                        modifier = Modifier.animateItem()
+                                        }
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
@@ -928,7 +946,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                                items(completedTrips, key = { it.orderNo }) { trip ->
+                                items(completedTrips, key = { it.orderNo }, contentType = { "trip_card" }) { trip ->
                                     HeroTripCard(
                                             now = currentTime,
                                         trip = trip,
@@ -946,8 +964,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onUpdateGate = { newGate ->
                                             updateTripGate(trip.orderNo, newGate)
-                                        },
-                                        modifier = Modifier.animateItem()
+                                        }
                                     )
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }

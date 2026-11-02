@@ -1,12 +1,8 @@
 package team.shiro.railwidget.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -14,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,11 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -65,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import team.shiro.railwidget.data.api.LulutongData
 import team.shiro.railwidget.data.model.StopInfo
 import team.shiro.railwidget.data.model.Trip
 import team.shiro.railwidget.data.model.TripStage
@@ -86,18 +80,37 @@ fun HeroTripCard(
     modifier: Modifier = Modifier,
     now: Long = System.currentTimeMillis()
 ) {
-    val stage = trip.getStage(now)
+    val stage = remember(trip.departureDate, trip.departureTime, trip.arrivalTime, trip.stops, now / 60_000L) {
+        trip.getStage(now)
+    }
     val isCompleted = stage == TripStage.COMPLETED
     val isInTransit = stage == TripStage.IN_TRANSIT
+
     // 历史已结束行程默认折叠表格，避免大表格霸屏；未出行或进行中行程可展开浏览
     var isExpandedTable by remember(trip.orderNo) { mutableStateOf(!isCompleted && trip.stops.size > 2) }
     val arrowRotation by animateFloatAsState(
         targetValue = if (isExpandedTable) 180f else 0f,
-        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing),
         label = "arrowRotation"
     )
     var showEditGateDialog by remember { mutableStateOf(false) }
     var editingGateText by remember(trip.ticketGate) { mutableStateOf(trip.ticketGate.removePrefix("检票口")) }
+
+    val formattedDate = remember(trip.departureDate) { formatDisplayDate(trip.departureDate) }
+    val (boardingIdx, alightingIdx) = remember(trip.stops, trip.departureStation, trip.arrivalStation) {
+        val depNorm = TripTimeline.station(trip.departureStation)
+        val arrNorm = TripTimeline.station(trip.arrivalStation)
+        val bIdx = trip.stops.indexOfFirst { TripTimeline.station(it.stationName).equals(depNorm, ignoreCase = true) }
+        val aIdx = if (bIdx >= 0) {
+            trip.stops.indices.firstOrNull { i ->
+                i > bIdx && TripTimeline.station(trip.stops[i].stationName).equals(arrNorm, ignoreCase = true)
+            } ?: trip.stops.indexOfFirst { TripTimeline.station(it.stationName).equals(arrNorm, ignoreCase = true) }
+        } else {
+            trip.stops.indexOfFirst { TripTimeline.station(it.stationName).equals(arrNorm, ignoreCase = true) }
+        }
+        Pair(bIdx, aIdx)
+    }
+    val rideStopSpan = if (boardingIdx >= 0 && alightingIdx > boardingIdx) alightingIdx - boardingIdx else 0
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -114,12 +127,11 @@ fun HeroTripCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
 
-            // 1. 顶部车票票头: 车次徽标 + 车型 + 日期与星期 + 乘车人 + 状态指示
+            // 1. 顶部车票票头: 车次徽标 + 车型 + 状态指示
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 车次大徽标
                 val badgeBg = when {
                     isCompleted -> Color(0xFF64748B)
                     isInTransit -> Color(0xFF0F766E)
@@ -151,7 +163,7 @@ fun HeroTripCard(
                     }
                 }
 
-                // 灵动胶囊状态指示芯片 (自绘闪电/运行红点，纯矢量，绝无 emoji 变形)
+                // 灵动胶囊状态指示芯片
                 if (isIslandRunning || isAutoLaunchActive) {
                     Spacer(modifier = Modifier.width(8.dp))
                     Surface(
@@ -202,7 +214,6 @@ fun HeroTripCard(
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                // 状态指示药丸 (候车中 / 停止检票 / 运行中 / 已结束)
                 val statusText = when {
                     isCompleted -> "已结束"
                     isInTransit -> "运行中"
@@ -232,7 +243,7 @@ fun HeroTripCard(
                 }
             }
 
-            // 2. 卡片顶栏第二行：完整出行日期与星期 + 乘车人 + 票种标签 (独占整行，彻底告别 9月2... 与 乘车... 截断)
+            // 2. 卡片顶栏第二行：完整出行日期与星期 + 乘车人 + 票种标签
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -240,7 +251,7 @@ fun HeroTripCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = formatDisplayDate(trip.departureDate),
+                    text = formattedDate,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = if (isCompleted) Color(0xFF64748B) else MaterialTheme.colorScheme.onSurface,
@@ -278,7 +289,7 @@ fun HeroTripCard(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 2. 主行程发到站与时刻 (大号粗体时刻 + 矢量运行路线历时)
+            // 2. 主行程发到站与时刻
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -307,13 +318,13 @@ fun HeroTripCard(
                     )
                 }
 
-                // 中间运行图示与历时
+                // 中间运行图示与历时 + 乘车区间站数/里程
                 Column(
                     modifier = Modifier.padding(horizontal = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     val durationText = ((trip.getArrivalTimeMillis() - trip.getDepartureTimeMillis()) / 60000L).let { minutes ->
-                        if (trip.arrivalTime.isBlank()) "" else "${minutes / 60}时${minutes % 60}分"
+                        if (trip.arrivalTime.isBlank() || minutes <= 0) "" else "${minutes / 60}时${minutes % 60}分"
                     }
                     if (durationText.isNotBlank()) {
                         Text(
@@ -326,7 +337,6 @@ fun HeroTripCard(
                         )
                     }
 
-                    // 轨迹指示器
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.padding(vertical = 4.dp)
@@ -349,9 +359,15 @@ fun HeroTripCard(
                         )
                     }
 
-                    val stopsCount = if (trip.stops.isNotEmpty()) "经停 ${trip.stops.size} 站" else "区间车次"
+                    val spanSummary = when {
+                        rideStopSpan > 0 && trip.rideMileageKm != null -> "乘车 ${rideStopSpan} 站 · ${trip.rideMileageKm.toInt()}km"
+                        rideStopSpan > 0 -> "乘车 ${rideStopSpan} 站"
+                        trip.rideMileageKm != null -> "${trip.rideMileageKm.toInt()} km"
+                        trip.stops.isNotEmpty() -> "全线 ${trip.stops.size} 站"
+                        else -> "区间车次"
+                    }
                     Text(
-                        text = stopsCount,
+                        text = spanSummary,
                         style = MaterialTheme.typography.labelSmall,
                         color = Color(0xFF94A3B8),
                         maxLines = 1,
@@ -385,7 +401,9 @@ fun HeroTripCard(
             }
 
             // 2.5 在途行程进度条与当前到站实时横幅
-            val inTransitPosition = trip.currentPosition(now)
+            val inTransitPosition = remember(trip.stops, trip.departureDate, trip.departureTime, trip.arrivalTime, now / 60_000L) {
+                trip.currentPosition(now)
+            }
             if (isInTransit || inTransitPosition != null) {
                 Spacer(modifier = Modifier.height(10.dp))
                 val progress = TripTimeline.progress(trip, now)
@@ -480,7 +498,6 @@ fun HeroTripCard(
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 车厢与座位
                     Column(modifier = Modifier.weight(1.1f)) {
                         Text(
                             text = "车厢座席",
@@ -503,7 +520,6 @@ fun HeroTripCard(
                         )
                     }
 
-                    // 席别
                     Column(modifier = Modifier.weight(0.9f)) {
                         Text(
                             text = if (trip.ticketType == "列车补票") "席别 · 补票" else "席别",
@@ -529,18 +545,19 @@ fun HeroTripCard(
                         }
                     }
 
-                    // 检票口 (醒目高亮，支持点击快速修改或从大屏重查)
+                    // 检票口 (支持未出行与历史行程点击编辑或重查)
                     val gateCode = trip.getCleanTicketGate()
                     val hasGate = gateCode.isNotBlank() && gateCode != "暂无"
                     Surface(
                         shape = RoundedCornerShape(8.dp),
                         color = when {
+                            hasGate && !isCompleted -> Color(0xFFFEF2F2)
+                            hasGate && isCompleted -> Color(0xFFEFF6FF)
                             isCompleted -> Color(0xFFF1F5F9)
-                            hasGate -> Color(0xFFFEF2F2)
                             else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
                         },
                         border = if (!hasGate && !isCompleted) BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)) else null,
-                        modifier = Modifier.clickable(enabled = onUpdateGate != null && !isCompleted) {
+                        modifier = Modifier.clickable(enabled = onUpdateGate != null) {
                             editingGateText = if (hasGate) gateCode else ""
                             showEditGateDialog = true
                         }
@@ -554,14 +571,19 @@ fun HeroTripCard(
                                     text = "检票口",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = if (isCompleted) Color(0xFF64748B) else if (hasGate) Color(0xFFDC2626) else MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = when {
+                                        hasGate && !isCompleted -> Color(0xFFDC2626)
+                                        hasGate && isCompleted -> Color(0xFF0284C7)
+                                        isCompleted -> Color(0xFF64748B)
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
                                 )
-                                if (onUpdateGate != null && !isCompleted) {
+                                if (onUpdateGate != null) {
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Icon(
                                         imageVector = Icons.Default.Edit,
                                         contentDescription = "修改检票口",
-                                        tint = if (hasGate) Color(0xFFDC2626).copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                        tint = if (hasGate && !isCompleted) Color(0xFFDC2626).copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                                         modifier = Modifier.size(10.dp)
                                     )
                                 }
@@ -578,7 +600,12 @@ fun HeroTripCard(
                                 fontWeight = if (hasGate) FontWeight.Black else FontWeight.Bold,
                                 maxLines = 1,
                                 softWrap = false,
-                                color = if (isCompleted) Color(0xFF64748B) else if (hasGate) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary
+                                color = when {
+                                    hasGate && !isCompleted -> Color(0xFFDC2626)
+                                    hasGate && isCompleted -> Color(0xFF0284C7)
+                                    isCompleted -> Color(0xFF64748B)
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
                             )
                         }
                     }
@@ -587,7 +614,7 @@ fun HeroTripCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 4. 【核心需求】途径车站与停车时间表格折叠/展开栏
+            // 4. 途径车站与停车时间表格折叠/展开栏
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -606,10 +633,13 @@ fun HeroTripCard(
                         tint = if (isCompleted) Color(0xFF94A3B8) else Color(0xFF0284C7)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    val tableTitle = if (trip.stops.isNotEmpty()) {
-                        "经停时刻表 (全线 ${trip.stops.size} 站)"
-                    } else {
-                        "经停时刻表 (区间两站)"
+                    val tableTitle = when {
+                        trip.stops.isNotEmpty() && rideStopSpan > 0 ->
+                            "经停时刻表 (全线 ${trip.stops.size} 站 · 乘车 ${rideStopSpan} 站)"
+                        trip.stops.isNotEmpty() ->
+                            "经停时刻表 (全线 ${trip.stops.size} 站)"
+                        else ->
+                            "经停时刻表 (区间两站)"
                     }
                     Text(
                         text = tableTitle,
@@ -641,17 +671,13 @@ fun HeroTripCard(
             AnimatedVisibility(
                 visible = isExpandedTable,
                 enter = expandVertically(
-                    animationSpec = spring(
-                        stiffness = Spring.StiffnessMediumLow,
-                        dampingRatio = Spring.DampingRatioLowBouncy
-                    )
-                ) + fadeIn(animationSpec = tween(180)),
+                    expandFrom = Alignment.Top,
+                    animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(durationMillis = 150)),
                 exit = shrinkVertically(
-                    animationSpec = spring(
-                        stiffness = Spring.StiffnessMediumLow,
-                        dampingRatio = Spring.DampingRatioNoBouncy
-                    )
-                ) + fadeOut(animationSpec = tween(140))
+                    shrinkTowards = Alignment.Top,
+                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(durationMillis = 120))
             ) {
                 Column(modifier = Modifier.padding(top = 6.dp)) {
                     // 列车编组与运行资料看板 (2×3 双列网格信息卡)
@@ -670,7 +696,7 @@ fun HeroTripCard(
                                     icon = { BulletTrainIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary) },
                                     label = "车型编组",
                                     value = buildString {
-                                        append(trip.trainModel.ifBlank { "暂无" })
+                                        append(trip.trainModel.ifBlank { "待查询" })
                                         if (trip.formation.isNotBlank() && trip.formation != trip.trainModel) {
                                             append(" · ${trip.formation}")
                                         }
@@ -678,13 +704,19 @@ fun HeroTripCard(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
+                                val (normBureau, normDepot) = remember(trip.railwayBureau, trip.crewDepot) {
+                                    val (b, d) = LulutongData.parseBureauAndDepot(trip.railwayBureau)
+                                    val finalB = b.ifBlank { trip.railwayBureau }
+                                    val finalD = trip.crewDepot.ifBlank { d }
+                                    Pair(finalB, finalD)
+                                }
                                 TrainInfoGridItem(
                                     icon = { CompassBureauIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary) },
                                     label = "担当路局",
                                     value = buildString {
-                                        append(trip.railwayBureau.ifBlank { "暂无" })
-                                        if (trip.crewDepot.isNotBlank() && trip.crewDepot != trip.railwayBureau) {
-                                            append(" · ${trip.crewDepot}")
+                                        append(normBureau.ifBlank { "待查询" })
+                                        if (normDepot.isNotBlank() && normDepot != normBureau) {
+                                            append(" · $normDepot")
                                         }
                                     },
                                     modifier = Modifier.weight(1f)
@@ -700,7 +732,7 @@ fun HeroTripCard(
                                         "${trip.diningCar} · ${trip.diningCarNote}"
                                     trip.diningCar.isNotBlank() -> trip.diningCar
                                     trip.diningCarNote.isNotBlank() -> trip.diningCarNote
-                                    else -> "暂无"
+                                    else -> "无餐车 / 待查"
                                 }
                                 TrainInfoGridItem(
                                     icon = { DiningCarIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary) },
@@ -709,16 +741,28 @@ fun HeroTripCard(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
+                                val formattedPlat = trip.platform.trim().let { p ->
+                                    when {
+                                        p.isBlank() -> ""
+                                        p.endsWith("站台") || p.endsWith("台") -> p
+                                        else -> "${p}站台"
+                                    }
+                                }
                                 val platformVal = buildString {
-                                    append(trip.platform.ifBlank { "暂无" })
-                                    val gate = trip.getCleanTicketGate()
-                                    if (gate != "暂无" && trip.platform.isBlank()) {
-                                        append(" (检票 $gate)")
+                                    if (formattedPlat.isNotBlank()) {
+                                        append(formattedPlat)
+                                    } else {
+                                        val gate = trip.getCleanTicketGate()
+                                        if (gate != "暂无" && gate.isNotBlank()) {
+                                            append("检票口 $gate")
+                                        } else {
+                                            append("待公布")
+                                        }
                                     }
                                 }
                                 TrainInfoGridItem(
                                     icon = { PlatformIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary) },
-                                    label = if (trip.platformReference) "站台 (参考)" else "停靠站台",
+                                    label = if (trip.platformReference && formattedPlat.isNotBlank()) "上车站台 (参考)" else "上车站台",
                                     value = platformVal,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -731,14 +775,14 @@ fun HeroTripCard(
                                 TrainInfoGridItem(
                                     icon = { MileageRouteIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary) },
                                     label = "乘车里程",
-                                    value = trip.rideMileageKm?.let { "${it.toInt()} km" } ?: "暂无",
+                                    value = trip.rideMileageKm?.let { "${it.toInt()} km" } ?: "待计算",
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 TrainInfoGridItem(
                                     icon = { RailTrackIcon(modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary) },
                                     label = "全线里程",
-                                    value = trip.totalMileageKm?.let { "${it.toInt()} km" } ?: "暂无",
+                                    value = trip.totalMileageKm?.let { "${it.toInt()} km" } ?: "待计算",
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -752,14 +796,16 @@ fun HeroTripCard(
                                         .padding(horizontal = 4.dp, vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val sourceLabel = buildString {
-                                        if (trip.dataSource.isNotBlank()) append(trip.dataSource)
-                                        if (trip.dataCheckedAt > 0) {
-                                            val checked = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).apply {
-                                                timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
-                                            }.format(java.util.Date(trip.dataCheckedAt))
-                                            if (isNotEmpty()) append(" · ")
-                                            append("查询于 $checked")
+                                    val sourceLabel = remember(trip.dataSource, trip.dataCheckedAt) {
+                                        buildString {
+                                            if (trip.dataSource.isNotBlank()) append(trip.dataSource)
+                                            if (trip.dataCheckedAt > 0) {
+                                                val checked = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).apply {
+                                                    timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
+                                                }.format(java.util.Date(trip.dataCheckedAt))
+                                                if (isNotEmpty()) append(" · ")
+                                                append("查询于 $checked")
+                                            }
                                         }
                                     }
                                     Text(
@@ -775,14 +821,15 @@ fun HeroTripCard(
                             }
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
                     TimetableTable(
                         trip = trip,
+                        boardingIndex = boardingIdx,
+                        alightingIndex = alightingIdx,
                         isCompleted = isCompleted,
                         now = now
                     )
 
-                    // 若尚未联网补齐多站时刻表，提供一键补全按钮
                     if (trip.stops.isEmpty() && onRefreshTimetable != null) {
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
@@ -806,7 +853,7 @@ fun HeroTripCard(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             Spacer(modifier = Modifier.height(4.dp))
 
-            // 5. 底部操作栏: 12306 详情短链 + 刷新时刻 + 归档 + 删除
+            // 5. 底部操作栏: 12306 详情短链 + 灵动岛 + 刷新时刻 + 归档 + 删除
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -879,7 +926,7 @@ fun HeroTripCard(
                     IconButton(onClick = onRefreshTimetable) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新途经时刻表",
+                            contentDescription = "刷新途经时刻表与列车资料",
                             modifier = Modifier.size(22.dp),
                             tint = MaterialTheme.colorScheme.outline
                         )
@@ -909,7 +956,6 @@ fun HeroTripCard(
         }
     }
 
-
     if (showEditGateDialog && onUpdateGate != null) {
         AlertDialog(
             onDismissRequest = { showEditGateDialog = false },
@@ -932,7 +978,7 @@ fun HeroTripCard(
                         value = editingGateText,
                         onValueChange = { editingGateText = it },
                         label = { Text("检票口编号") },
-                        placeholder = { Text("如 17A、17A/B、A5") },
+                        placeholder = { Text("如 17A、17A/B、1A") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -978,7 +1024,7 @@ fun HeroTripCard(
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("从 12306 官方重新拉取检票口")
+                            Text("从 12306 / 路路通重新拉取")
                         }
                     }
                 }
@@ -1046,15 +1092,40 @@ private fun TrainInfoGridItem(
 }
 
 /**
- * 全卡面规整途经时刻表格组件 (Table)
+ * 全卡面 6 列式途经时刻与累计里程表格组件 (站序 | 车站 | 到点 | 开点 | 停时 | 里程)
  */
 @Composable
 fun TimetableTable(
     trip: Trip,
+    boardingIndex: Int = -1,
+    alightingIndex: Int = -1,
     isCompleted: Boolean,
     now: Long = System.currentTimeMillis()
 ) {
-    // 边框容器
+    val stopList = remember(trip.stops, trip.departureStation, trip.arrivalStation, trip.departureTime, trip.arrivalTime) {
+        if (trip.stops.isNotEmpty()) {
+            trip.stops
+        } else {
+            listOf(
+                StopInfo(
+                    stationNo = "01",
+                    stationName = trip.departureStation,
+                    arriveTime = "----",
+                    startTime = if (trip.departureTime.isNotBlank() && trip.departureTime != "00:00") trip.departureTime else "--:--",
+                    stopoverTime = "----"
+                ),
+                StopInfo(
+                    stationNo = "02",
+                    stationName = trip.arrivalStation,
+                    arriveTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--",
+                    startTime = "----",
+                    stopoverTime = "----"
+                )
+            )
+        }
+    }
+    val hasAnyMileage = remember(stopList) { stopList.any { it.mileageKm != null } }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
@@ -1062,7 +1133,7 @@ fun TimetableTable(
         color = MaterialTheme.colorScheme.surface
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // 表头 (5 列: 站序、车站、到达、发车、停留)
+            // 表头 (6 列: 站序、车站、到点、开点、停时、里程)
             Surface(
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
                 modifier = Modifier.fillMaxWidth()
@@ -1070,7 +1141,7 @@ fun TimetableTable(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -1078,7 +1149,7 @@ fun TimetableTable(
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.weight(0.12f),
+                        modifier = Modifier.weight(0.10f),
                         textAlign = TextAlign.Center
                     )
                     Text(
@@ -1086,77 +1157,47 @@ fun TimetableTable(
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.weight(0.32f),
+                        modifier = Modifier.weight(if (hasAnyMileage) 0.28f else 0.34f),
                         textAlign = TextAlign.Start
                     )
                     Text(
-                        text = "到达",
+                        text = "到点",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.weight(0.20f),
+                        modifier = Modifier.weight(0.17f),
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "发车",
+                        text = "开点",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.weight(0.20f),
+                        modifier = Modifier.weight(0.17f),
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "停留",
+                        text = "停时",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.weight(0.16f),
+                        modifier = Modifier.weight(0.14f),
                         textAlign = TextAlign.Center
                     )
+                    if (hasAnyMileage) {
+                        Text(
+                            text = "里程",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.weight(0.14f),
+                            textAlign = TextAlign.End
+                        )
+                    }
                 }
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-
-            // 表体数据行
-            val stopList = if (trip.stops.isNotEmpty()) {
-                trip.stops
-            } else {
-                // 兜底基于出发站与到达站构建标准两站行
-                listOf(
-                    StopInfo(
-                        stationNo = "01",
-                        stationName = trip.departureStation,
-                        arriveTime = "----",
-                        startTime = if (trip.departureTime.isNotBlank() && trip.departureTime != "00:00") trip.departureTime else "--:--",
-                        stopoverTime = "始发"
-                    ),
-                    StopInfo(
-                        stationNo = "02",
-                        stationName = trip.arrivalStation,
-                        arriveTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--",
-                        startTime = "----",
-                        stopoverTime = "终到"
-                    )
-                )
-            }
-
-            val targetDep = trip.departureStation.replace("站", "").trim()
-            val targetArr = trip.arrivalStation.replace("站", "").trim()
-            val boardingIndex = stopList.indexOfFirst {
-                it.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
-            }
-            val alightingIndex = if (boardingIndex >= 0) {
-                stopList.indices.firstOrNull { i ->
-                    i > boardingIndex && stopList[i].stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
-                } ?: stopList.indexOfFirst {
-                    it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
-                }
-            } else {
-                stopList.indexOfFirst {
-                    it.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
-                }
-            }
 
             val position = trip.currentPosition(now)
             stopList.forEachIndexed { index, stop ->
@@ -1169,9 +1210,9 @@ fun TimetableTable(
 
                 val rowBg = when {
                     isHit && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                    isKeyStop && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
-                    isInRideSpan && !isCompleted -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.07f)
-                    index % 2 == 1 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                    isKeyStop -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isCompleted) 0.14f else 0.20f)
+                    isInRideSpan -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = if (isCompleted) 0.05f else 0.08f)
+                    index % 2 == 1 -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
                     else -> Color.Transparent
                 }
 
@@ -1179,88 +1220,86 @@ fun TimetableTable(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(rowBg)
-                        .padding(horizontal = 8.dp, vertical = 7.dp),
+                        .padding(horizontal = 6.dp, vertical = 6.5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // 站序
+                    // 1. 站序
                     val seqColor = when {
                         isPassed -> Color(0xFF94A3B8).copy(alpha = 0.5f)
-                        isKeyStop && !isCompleted -> Color(0xFF0284C7)
+                        isKeyStop -> Color(0xFF0284C7)
                         else -> Color(0xFF94A3B8)
                     }
                     Text(
                         text = stop.stationNo.padStart(2, '0'),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         fontFamily = FontFamily.Monospace,
                         color = seqColor,
                         fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.weight(0.12f),
+                        modifier = Modifier.weight(0.10f),
                         textAlign = TextAlign.Center
                     )
 
-                    // 车站名 (出发/到达标注 [上车] / [下车] / [当前] / [下一站] 胶囊，附站台)
+                    // 2. 车站名 + 胶囊徽标 + 站台副行
                     Column(
-                        modifier = Modifier.weight(0.32f),
+                        modifier = Modifier.weight(if (hasAnyMileage) 0.28f else 0.34f),
                         verticalArrangement = Arrangement.Center
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val nameColor = when {
                                 isPassed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                                isKeyStop && !isCompleted -> Color(0xFF0284C7)
+                                isKeyStop -> Color(0xFF0284C7)
                                 isCompleted -> Color(0xFF64748B)
                                 else -> MaterialTheme.colorScheme.onSurface
                             }
                             Text(
                                 text = stop.stationName,
-                                fontSize = 13.sp,
+                                fontSize = 12.5.sp,
                                 fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Medium,
                                 color = nameColor,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
                             if (isHit && !isCompleted) {
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
                                 val badgeText = if (position.atStation) "当前" else "下一站"
                                 val badgeBg = if (position.atStation) Color(0xFFECFDF5) else Color(0xFFEFF6FF)
                                 val badgeFg = if (position.atStation) Color(0xFF0F766E) else Color(0xFF0284C7)
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = badgeBg
-                                ) {
+                                Surface(shape = RoundedCornerShape(4.dp), color = badgeBg) {
                                     Text(
                                         text = badgeText,
-                                        fontSize = 9.sp,
+                                        fontSize = 8.5.sp,
                                         color = badgeFg,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
-                            } else if (isBoarding && !isCompleted) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = Color(0xFFEFF6FF)
-                                ) {
+                            } else if (isBoarding) {
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFEFF6FF)) {
                                     Text(
                                         text = "上车",
-                                        fontSize = 9.sp,
+                                        fontSize = 8.5.sp,
                                         color = Color(0xFF0284C7),
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
-                            } else if (isAlighting && !isCompleted) {
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = Color(0xFFECFDF5)
-                                ) {
+                            } else if (isAlighting) {
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Surface(shape = RoundedCornerShape(4.dp), color = Color(0xFFECFDF5)) {
                                     Text(
                                         text = "下车",
-                                        fontSize = 9.sp,
+                                        fontSize = 8.5.sp,
                                         color = Color(0xFF059669),
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                                        modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp),
+                                        maxLines = 1,
+                                        softWrap = false
                                     )
                                 }
                             }
@@ -1276,12 +1315,8 @@ fun TimetableTable(
                                     stop.platformReference -> Color(0xFFD97706)
                                     else -> Color(0xFF0284C7)
                                 }
-                                PlatformIcon(
-                                    modifier = Modifier.size(10.dp),
-                                    tint = platTint
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
-                                val platText = if (stop.platformReference) "参考站台 ${stop.platform}" else "站台 ${stop.platform}"
+                                val platClean = stop.platform.removeSuffix("站台")
+                                val platText = if (stop.platformReference) "${platClean}站台(参)" else "${platClean}站台"
                                 Text(
                                     text = platText,
                                     fontSize = 9.sp,
@@ -1294,84 +1329,69 @@ fun TimetableTable(
                         }
                     }
 
-                    // 到站时间
-                    val arriveDisplay = when {
-                        stop.arriveTime == "----" || stop.arriveTime.isBlank() -> "始发"
-                        else -> stop.arriveTime
-                    }
-                    val arriveColor = when {
+                    // 3. 到点
+                    val isOriginStop = index == 0 || stop.arriveTime == "----" || stop.arriveTime == "--:--" || stop.arriveTime.isBlank()
+                    val arriveDisplay = if (isOriginStop) "始发" else stop.arriveTime
+                    val timeColor = when {
                         isPassed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                        isKeyStop && !isCompleted -> Color(0xFF0284C7)
-                        isCompleted -> Color(0xFF94A3B8)
+                        isKeyStop -> Color(0xFF0284C7)
+                        isCompleted -> Color(0xFF64748B)
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                     Text(
                         text = arriveDisplay,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.5.sp,
+                        fontFamily = if (isOriginStop) FontFamily.Default else FontFamily.Monospace,
                         fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Normal,
-                        color = arriveColor,
-                        modifier = Modifier.weight(0.20f),
+                        color = if (isOriginStop && !isKeyStop) Color(0xFF94A3B8) else timeColor,
+                        modifier = Modifier.weight(0.17f),
                         textAlign = TextAlign.Center
                     )
 
-                    // 发车时间
-                    val startDisplay = when {
-                        stop.startTime == "----" || stop.startTime.isBlank() -> "终到"
-                        else -> stop.startTime
-                    }
-                    val startColor = when {
-                        isPassed -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-                        isKeyStop && !isCompleted -> Color(0xFF0284C7)
-                        isCompleted -> Color(0xFF94A3B8)
-                        else -> MaterialTheme.colorScheme.onSurface
-                    }
+                    // 4. 开点
+                    val isTerminalStop = index == stopList.lastIndex || stop.startTime == "----" || stop.startTime == "--:--" || stop.startTime.isBlank()
+                    val startDisplay = if (isTerminalStop) "终到" else stop.startTime
                     Text(
                         text = startDisplay,
-                        fontSize = 12.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.5.sp,
+                        fontFamily = if (isTerminalStop) FontFamily.Default else FontFamily.Monospace,
                         fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Normal,
-                        color = startColor,
-                        modifier = Modifier.weight(0.20f),
+                        color = if (isTerminalStop && !isKeyStop) Color(0xFF94A3B8) else timeColor,
+                        modifier = Modifier.weight(0.17f),
                         textAlign = TextAlign.Center
                     )
 
-                    // 停留时长
-                    val dwellDisplay = when {
-                        stop.stopoverTime == "始发" || stop.stopoverTime == "终到" -> "--"
-                        stop.stopoverTime.isNotBlank() -> {
-                            if (stop.stopoverTime.endsWith("分") || stop.stopoverTime.endsWith("分钟")) {
-                                "停${stop.stopoverTime}"
-                            } else {
-                                "${stop.stopoverTime}分"
-                            }
-                        }
-                        else -> "--"
-                    }
+                    // 5. 停时 (彻底修复 ----分 与冗长文字)
+                    val dwellDisplay = formatCleanDwell(stop.stopoverTime, isOriginStop, isTerminalStop)
                     val dwellColor = when {
                         isPassed -> Color(0xFF94A3B8).copy(alpha = 0.45f)
-                        isKeyStop && !isCompleted -> Color(0xFF0284C7)
+                        isKeyStop && dwellDisplay != "—" -> Color(0xFF0284C7)
                         else -> Color(0xFF94A3B8)
                     }
                     Text(
                         text = dwellDisplay,
                         fontSize = 11.sp,
                         color = dwellColor,
-                        fontWeight = if (isKeyStop) FontWeight.SemiBold else FontWeight.Normal,
-                        modifier = Modifier.weight(0.16f),
+                        fontWeight = if (isKeyStop && dwellDisplay != "—") FontWeight.SemiBold else FontWeight.Normal,
+                        modifier = Modifier.weight(0.14f),
                         textAlign = TextAlign.Center
                     )
+
+                    // 6. 里程
+                    if (hasAnyMileage) {
+                        val kmText = stop.mileageKm?.let { "${it.toInt()}" } ?: "—"
+                        Text(
+                            text = kmText,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (isKeyStop) Color(0xFF0284C7) else Color(0xFF94A3B8),
+                            fontWeight = if (isKeyStop) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.weight(0.14f),
+                            textAlign = TextAlign.End
+                        )
+                    }
                 }
 
-                if (stop.mileageKm != null || stop.lineMileage.isNotBlank()) {
-                    val mileage = stop.mileageKm?.let { "距列车始发站 $it km" } ?: "线路里程标（非列车累计里程）：${stop.lineMileage}"
-                    Text(
-                        text = mileage,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (isPassed) MaterialTheme.colorScheme.outline.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
                 if (index < stopList.size - 1) {
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
@@ -1383,8 +1403,17 @@ fun TimetableTable(
     }
 }
 
+private fun formatCleanDwell(raw: String, isOrigin: Boolean, isTerminal: Boolean): String {
+    if (isOrigin || isTerminal) return "—"
+    val s = raw.trim()
+    if (s.isEmpty() || s.contains('-') || s == "始发" || s == "终到") return "—"
+    val digits = s.filter { it.isDigit() }.toIntOrNull() ?: return "—"
+    if (digits <= 0) return "—"
+    return "${digits}分"
+}
+
 /**
- * 格式化日期为友好显示（例如 2026年9月25日 周五）
+ * 格式化日期为友好显示（例如 10月29日 周四）
  */
 fun formatDisplayDate(dateStr: String): String {
     return try {
@@ -1408,7 +1437,7 @@ fun calculateDuration(depTime: String, arrTime: String): String {
         val depMin = depParts[0].toInt() * 60 + depParts[1].toInt()
         val arrMin = arrParts[0].toInt() * 60 + arrParts[1].toInt()
         var totalMin = arrMin - depMin
-        if (totalMin < 0) totalMin += 24 * 60 // 跨日
+        if (totalMin < 0) totalMin += 24 * 60
         val hours = totalMin / 60
         val mins = totalMin % 60
         when {
@@ -1438,4 +1467,3 @@ fun getTrainCategory(trainCode: String): String {
         else -> "列车"
     }
 }
-
