@@ -54,11 +54,11 @@ object UpdateChecker {
 
     // 常用多线加速镜像节点
     val MIRROR_NODES = listOf(
-        MirrorNode("ghfast 节点 (国内多线)", "https://ghfast.top/"),
-        MirrorNode("ghproxy 节点 (高速镜像)", "https://ghproxy.net/"),
-        MirrorNode("moeyy 节点 (香港/亚太)", "https://github.moeyy.xyz/"),
-        MirrorNode("gh-proxy 节点 (备用容灾)", "https://gh-proxy.com/"),
-        MirrorNode("GitHub 官方原链 (直连)", "")
+        MirrorNode("ghfast 镜像", "https://ghfast.top/"),
+        MirrorNode("ghproxy 镜像", "https://ghproxy.net/"),
+        MirrorNode("moeyy 镜像", "https://github.moeyy.xyz/"),
+        MirrorNode("gh-proxy 镜像", "https://gh-proxy.com/"),
+        MirrorNode("GitHub 直连", "")
     )
 
     /**
@@ -137,7 +137,7 @@ object UpdateChecker {
         val available = results.filter { it.pingMs < 2500 }
         val best = available.minByOrNull { it.pingMs }
             ?: results.minByOrNull { it.pingMs }
-            ?: SpeedTestResult("ghfast 节点 (国内多线)", 110, "${MIRROR_NODES[0].prefix}$originalDownloadUrl")
+            ?: SpeedTestResult("ghfast 镜像", 110, "${MIRROR_NODES[0].prefix}$originalDownloadUrl")
 
         best
     }

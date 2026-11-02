@@ -56,7 +56,7 @@ fun IslandPermissions() {
     val db = TripDatabaseHelper.getInstance(context)
 
     Column(Modifier.fillMaxWidth()) {
-        Text("自动唤起权限与状态检查", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text("权限状态", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(4.dp))
 
         Text(
@@ -108,7 +108,7 @@ fun IslandPermissions() {
 
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "MIUI 14 / HyperOS 贴士：请允许「自启动」、「后台弹出界面」，并将「省电策略」设为「无限制」。强行停止应用后，需手动打开一次以恢复定时调度。",
+            text = "小米/澎湃系统请开启「自启动」、「后台弹出界面」，并将省电策略设为「无限制」。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -121,9 +121,7 @@ fun IslandPermissions() {
         } else null
 
         val diagnosticLines = listOfNotNull(
-            alarmStatus.takeIf { it.isNotBlank() }?.let { "调度诊断：$it" },
-            nextAlarmText,
-            startStatus.takeIf { it.isNotBlank() }?.let { "运行诊断：$it" }
+            nextAlarmText
         )
         if (diagnosticLines.isNotEmpty()) {
             Spacer(modifier = Modifier.height(6.dp))

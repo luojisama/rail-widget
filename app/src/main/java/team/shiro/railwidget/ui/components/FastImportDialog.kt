@@ -29,7 +29,7 @@ fun FastImportDialog(
         title = { Text("导入行程") },
         text = {
             Column {
-                Text("支持单条或多选批量粘贴 12306 短信/邮件内容，系统将自动批量多行解析车次、座位、发到站与时刻：")
+                Text("粘贴一条或多条 12306 购票/改签短信或邮件正文：")
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = rawText,

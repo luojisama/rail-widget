@@ -2,7 +2,11 @@ package team.shiro.railwidget.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -73,6 +77,7 @@ fun HeroTripCard(
     onDelete: () -> Unit,
     onRefreshTimetable: (() -> Unit)? = null,
     onUpdateGate: ((String) -> Unit)? = null,
+    isRefreshing: Boolean = false,
     isIslandRunning: Boolean = false,
     isAutoLaunchActive: Boolean = false,
     autoLeadText: String = "",
@@ -85,6 +90,16 @@ fun HeroTripCard(
     }
     val isCompleted = stage == TripStage.COMPLETED
     val isInTransit = stage == TripStage.IN_TRANSIT
+
+    val cardRefreshRotation = if (isRefreshing) {
+        val transition = rememberInfiniteTransition(label = "cardRefresh")
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(tween(800, easing = LinearEasing)),
+            label = "cardRefreshAngle"
+        ).value
+    } else 0f
 
     // 历史已结束行程默认折叠表格，避免大表格霸屏；未出行或进行中行程可展开浏览
     var isExpandedTable by remember(trip.orderNo) { mutableStateOf(!isCompleted && trip.stops.size > 2) }
@@ -213,6 +228,40 @@ fun HeroTripCard(
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
+
+                if (onRefreshTimetable != null) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isRefreshing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(enabled = !isRefreshing) { onRefreshTimetable() }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "刷新本车次",
+                                modifier = Modifier
+                                    .size(13.dp)
+                                    .graphicsLayer { rotationZ = cardRefreshRotation },
+                                tint = if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = if (isRefreshing) "刷新中" else "刷新",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
 
                 val statusText = when {
                     isCompleted -> "已结束"
@@ -508,7 +557,7 @@ fun HeroTripCard(
                             trip.carriage.isNotBlank() && trip.seat.isNotBlank() -> "${trip.carriage} ${trip.seat}"
                             trip.carriage.isNotBlank() -> trip.carriage
                             trip.seat.isNotBlank() -> trip.seat
-                            else -> "无座席凭证"
+                            else -> "无座"
                         }
                         Text(
                             text = seatDisplay,
@@ -834,16 +883,19 @@ fun HeroTripCard(
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = onRefreshTimetable,
+                            enabled = !isRefreshing,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .graphicsLayer { rotationZ = cardRefreshRotation }
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text(text = "联网查询完整沿途经停站与停车时长")
+                            Text(text = if (isRefreshing) "正在查询时刻表…" else "查询完整时刻表")
                         }
                     }
                 }
@@ -873,7 +925,7 @@ fun HeroTripCard(
                         }
                     ) {
                         Text(
-                            text = "12306 官方凭证 ↗",
+                            text = "12306 详情 ↗",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -923,12 +975,14 @@ fun HeroTripCard(
                 Spacer(modifier = Modifier.weight(1f))
 
                 if (onRefreshTimetable != null) {
-                    IconButton(onClick = onRefreshTimetable) {
+                    IconButton(onClick = onRefreshTimetable, enabled = !isRefreshing) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新途经时刻表与列车资料",
-                            modifier = Modifier.size(22.dp),
-                            tint = MaterialTheme.colorScheme.outline
+                            contentDescription = "刷新本车次",
+                            modifier = Modifier
+                                .size(22.dp)
+                                .graphicsLayer { rotationZ = cardRefreshRotation },
+                            tint = if (isRefreshing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         )
                     }
                 }

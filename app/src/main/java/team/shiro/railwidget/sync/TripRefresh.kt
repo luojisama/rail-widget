@@ -21,19 +21,24 @@ import team.shiro.railwidget.island.LiveIslandScheduler
 import team.shiro.railwidget.island.LiveIslandService
 import team.shiro.railwidget.widget.TripStateScheduler
 import team.shiro.railwidget.widget.TripWidgetRenderer
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 object TripRefresh {
     const val ACTION_CHANGED = "team.shiro.railwidget.action.TRIPS_CHANGED"
     const val ACTION_SHORTCUT_REFRESH = "team.shiro.railwidget.action.REFRESH_STATUS"
-    private val attempts = mutableMapOf<String, Long>()
+    private val attempts = ConcurrentHashMap<String, Long>()
+
     data class Result(val requested: Int, val updated: Int) {
         val message: String get() = when {
-            requested == 0 -> "暂无需要刷新的行程，状态已更新"
-            updated == 0 -> "状态已更新，暂未取得新的列车数据，保留已有信息"
-            updated < requested -> "已更新 $updated/$requested 个行程，其余保留已有信息"
-            else -> "行程状态与列车资料已更新"
+            requested == 0 -> "已是最新状态"
+            updated == 0 -> "暂无新数据"
+            else -> "已更新 $updated 个车次"
         }
+    }
+
+    data class SingleResult(val trainCode: String, val updated: Boolean) {
+        val message: String get() = if (updated) "$trainCode 已更新" else "$trainCode 暂无新变化"
     }
 
     fun formatFreshness(dataCheckedAt: Long, liveCheckedAt: Long = 0L, now: Long = System.currentTimeMillis()): String {
@@ -48,28 +53,42 @@ object TripRefresh {
         }
     }
 
-    /** Serializes UI, service and worker fetches; repeated taps reuse the latest result. */
+    /** Fast, non-blocking refresh for a single trip card. */
+    fun refreshSingle(context: Context, orderNo: String): SingleResult {
+        val db = TripDatabaseHelper.getInstance(context)
+        val trip = db.getTrip(orderNo) ?: return SingleResult("", false)
+        val now = System.currentTimeMillis()
+        attempts[orderNo] = now
+
+        val enriched = LulutongData.enrich(context, RailwayApiService.enrichTrip(trip))
+        val updated = db.applyTrainEnrichment(trip, enriched)
+        publish(context)
+        return SingleResult(trip.trainCode, updated)
+    }
+
+    /** Serializes background/global fetches; repeated taps reuse the latest result. */
     @Synchronized
     fun refresh(context: Context, orderNo: String? = null, force: Boolean = false): Result {
+        if (orderNo != null) {
+            val single = refreshSingle(context, orderNo)
+            return Result(1, if (single.updated) 1 else 0)
+        }
         val db = TripDatabaseHelper.getInstance(context)
         val now = System.currentTimeMillis()
-        val trips = if (orderNo != null) {
-            listOfNotNull(db.getTrip(orderNo))
-        } else {
-            val activeWindow = db.getActiveTrips().filter {
-                it.getDepartureTimeMillis() - now <= 86_400_000L && now < it.getArrivalTimeMillis() + 900_000L
-            }
-            if (force) {
-                val extra = db.getAllTrips()
-                    .filter { t -> activeWindow.none { it.orderNo == t.orderNo } }
-                    .sortedByDescending { it.departureDate }
-                    .filter { it.lulutongVersion.isBlank() || it.rideMileageKm == null || it.stops.isEmpty() }
-                    .take(5)
-                activeWindow + extra
-            } else {
-                activeWindow
-            }
+        val activeWindow = db.getActiveTrips().filter {
+            it.getDepartureTimeMillis() - now <= 86_400_000L && now < it.getArrivalTimeMillis() + 900_000L
         }
+        val trips = if (force) {
+            val extra = db.getAllTrips()
+                .filter { t -> activeWindow.none { it.orderNo == t.orderNo } }
+                .sortedByDescending { it.departureDate }
+                .filter { it.lulutongVersion.isBlank() || it.rideMileageKm == null || it.stops.isEmpty() }
+                .take(3)
+            activeWindow + extra
+        } else {
+            activeWindow
+        }
+
         var updated = 0
         var requestedCount = trips.size
         trips.forEach { trip ->
@@ -83,17 +102,15 @@ object TripRefresh {
             if (db.applyTrainEnrichment(trip, enriched)) updated++
         }
 
-        // Fast offline/cached Lulutong pass for all remaining trips missing mileage, platform, or bureau
-        if (orderNo == null) {
-            val allTrips = db.getAllTrips()
-            for (t in allTrips) {
-                if (trips.any { it.orderNo == t.orderNo }) continue
-                if (t.lulutongVersion.isBlank() || t.rideMileageKm == null || t.platform.isBlank() || t.railwayBureau.endsWith("段")) {
-                    val lltEnriched = LulutongData.enrich(context, t)
-                    if (lltEnriched != t && db.applyTrainEnrichment(t, lltEnriched)) {
-                        updated++
-                        requestedCount++
-                    }
+        // Fast offline/cached Lulutong pass for remaining trips missing mileage, platform, or bureau
+        val allTrips = db.getAllTrips()
+        for (t in allTrips) {
+            if (trips.any { it.orderNo == t.orderNo }) continue
+            if (t.lulutongVersion.isBlank() || t.rideMileageKm == null || t.platform.isBlank() || t.railwayBureau.endsWith("段")) {
+                val lltEnriched = LulutongData.enrich(context, t)
+                if (lltEnriched != t && db.applyTrainEnrichment(t, lltEnriched)) {
+                    updated++
+                    requestedCount++
                 }
             }
         }
@@ -111,7 +128,6 @@ object TripRefresh {
     }
 
     fun enqueue(context: Context) {
-        // Local state renders immediately, even if offline. Worker survives receiver/process exit.
         TripWidgetRenderer.updateAllWidgets(context)
         try {
             WorkManager.getInstance(context).enqueueUniqueWork("trip-refresh", ExistingWorkPolicy.KEEP,

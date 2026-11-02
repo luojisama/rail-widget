@@ -124,7 +124,7 @@ fun SettingsDialog(
                                     tint = if (selectedCategoryTab == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("灵动岛自动化")
+                                Text("灵动岛")
                             }
                         }
                     )
@@ -220,12 +220,12 @@ fun SettingsDialog(
                         ) {
                             Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                                 Text(
-                                    text = "高可靠系统闹铃唤醒",
+                                    text = "系统闹钟通道唤醒",
                                     fontWeight = FontWeight.Bold,
                                     style = MaterialTheme.typography.bodyLarge
                                 )
                                 Text(
-                                    text = "使用 AlarmClock 穿透深度待机与省电拦截，保证灭屏锁屏准时弹出",
+                                    text = "避免锁屏或后台省电导致灵动岛无法按时弹出",
                                     style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -250,12 +250,12 @@ fun SettingsDialog(
                     ) {
                         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
-                                text = "智能中转换乘接力",
+                                text = "同日换乘自动切换",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                text = "第一程到站后不关闭，平滑接力下一程车次并更新检票口",
+                                text = "前序车次到站后自动切换至下一程车次",
                                 style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -275,12 +275,12 @@ fun SettingsDialog(
                     ) {
                         Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
                             Text(
-                                text = "到站后自动安全关闭",
+                                text = "到站后自动关闭",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
-                                text = "单程到站后留出 15 分钟出站缓冲，随后自动安全退出",
+                                text = "列车终到 15 分钟后自动关闭灵动岛",
                                 style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

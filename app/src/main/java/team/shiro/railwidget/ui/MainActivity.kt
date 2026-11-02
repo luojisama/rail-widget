@@ -239,6 +239,7 @@ class MainActivity : ComponentActivity() {
         var trips by remember { mutableStateOf(emptyList<Trip>()) }
         var currentTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
         var isRefreshingStatus by remember { mutableStateOf(false) }
+        var refreshingOrderNos by remember { mutableStateOf(emptySet<String>()) }
         var isSyncingMail by remember { mutableStateOf(false) }
         var isReadingSms by remember { mutableStateOf(false) }
         var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -280,7 +281,7 @@ class MainActivity : ComponentActivity() {
                 isIslandRunning = started && LiveIslandService.isServiceRunning
                 activeIslandOrderNo = pending
                 scope.launch {
-                    snackbarHostState.showSnackbar(if (started) "灵动岛启动请求已发送" else db.getSetting("island_start_status"))
+                    snackbarHostState.showSnackbar(if (started) "已开启灵动岛" else db.getSetting("island_start_status", "灵动岛启动失败"))
                 }
             }
         }
@@ -382,7 +383,7 @@ class MainActivity : ComponentActivity() {
                 isIslandRunning = false
                 activeIslandOrderNo = null
                 scope.launch {
-                    snackbarHostState.showSnackbar("已关闭灵动胶囊")
+                    snackbarHostState.showSnackbar("已关闭灵动岛")
                 }
             } else {
                 if (!IslandPermissionHelper.hasOverlayPermission(context)) {
@@ -393,13 +394,7 @@ class MainActivity : ComponentActivity() {
                     isIslandRunning = started && LiveIslandService.isServiceRunning
                     activeIslandOrderNo = orderNo
                     scope.launch {
-                        val isPastTrip = targetTrip?.let { it.getStage() == TripStage.COMPLETED } ?: false
-                        val tip = if (isPastTrip) {
-                            "历史车次胶囊启动请求已发送"
-                        } else {
-                            "灵动岛启动请求已发送"
-                        }
-                        snackbarHostState.showSnackbar(if (started) tip else db.getSetting("island_start_status", "灵动岛启动失败"))
+                        snackbarHostState.showSnackbar(if (started) "已开启灵动岛" else db.getSetting("island_start_status", "灵动岛启动失败"))
                     }
                 }
             }
@@ -411,18 +406,21 @@ class MainActivity : ComponentActivity() {
             db.insertOrUpdateTrip(updated, preserveManualGate = false)
             reloadTrips()
             scope.launch {
-                snackbarHostState.showSnackbar("已更新检票口为: $newGate 并同步至桌面小组件")
+                snackbarHostState.showSnackbar("检票口已更新为 $newGate")
             }
         }
 
         fun refreshTripTimetable(trip: Trip) {
-            if (isRefreshingStatus) return
-            isRefreshingStatus = true
+            if (trip.orderNo in refreshingOrderNos) return
+            refreshingOrderNos = refreshingOrderNos + trip.orderNo
             scope.launch {
                 try {
-                    val result = withContext(Dispatchers.IO) { TripRefresh.refresh(context, trip.orderNo, force = true) }
+                    val result = withContext(Dispatchers.IO) { TripRefresh.refreshSingle(context, trip.orderNo) }
+                    trips = withContext(Dispatchers.IO) { db.getAllTrips() }
                     snackbarHostState.showSnackbar(result.message)
-                } finally { isRefreshingStatus = false }
+                } finally {
+                    refreshingOrderNos = refreshingOrderNos - trip.orderNo
+                }
             }
         }
 
@@ -777,14 +775,14 @@ class MainActivity : ComponentActivity() {
                                                 Spacer(modifier = Modifier.width(10.dp))
                                                 Column {
                                                     Text(
-                                                        text = "想体验灵动胶囊 / 灵动岛？",
+                                                        text = "查看历史行程与灵动岛预览",
                                                         fontWeight = FontWeight.Bold,
                                                         style = MaterialTheme.typography.titleSmall,
                                                         color = MaterialTheme.colorScheme.primary
                                                     )
                                                     Spacer(modifier = Modifier.height(2.dp))
                                                     Text(
-                                                        text = "点击可前往「已结束」标签页，在任意历史车票右上角点击「灵动岛」快速查看悬浮胶囊效果！",
+                                                        text = "前往「已结束」列表查看历史车票，或点击「预览灵动岛」查看悬浮窗效果。",
                                                         style = MaterialTheme.typography.bodySmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
@@ -803,8 +801,9 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier.padding(top = 12.dp, bottom = 8.dp)
                                     )
                                     HeroTripCard(
-                                            now = currentTime,
+                                        now = currentTime,
                                         trip = upcomingTrips.first(),
+                                        isRefreshing = upcomingTrips.first().orderNo in refreshingOrderNos,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == upcomingTrips.first().orderNo,
                                         isAutoLaunchActive = isAutoLaunchOn,
                                         autoLeadText = leadText,
@@ -842,6 +841,7 @@ class MainActivity : ComponentActivity() {
                                         HeroTripCard(
                                             now = currentTime,
                                             trip = trip,
+                                            isRefreshing = trip.orderNo in refreshingOrderNos,
                                             isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                             isAutoLaunchActive = isAutoLaunchOn && isNextTransfer && LiveIslandScheduler.isTransferHandoverEnabled(context),
                                             autoLeadText = if (isNextTransfer) "换乘接力" else "",
@@ -897,8 +897,9 @@ class MainActivity : ComponentActivity() {
                                 }
                                 items(inTransitTrips, key = { it.orderNo }, contentType = { "trip_card" }) { trip ->
                                     HeroTripCard(
-                                            now = currentTime,
+                                        now = currentTime,
                                         trip = trip,
+                                        isRefreshing = trip.orderNo in refreshingOrderNos,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                         onToggleIsland = {
                                             toggleIslandForTrip(trip.orderNo)
@@ -948,8 +949,9 @@ class MainActivity : ComponentActivity() {
                                 }
                                 items(completedTrips, key = { it.orderNo }, contentType = { "trip_card" }) { trip ->
                                     HeroTripCard(
-                                            now = currentTime,
+                                        now = currentTime,
                                         trip = trip,
+                                        isRefreshing = trip.orderNo in refreshingOrderNos,
                                         isIslandRunning = isIslandRunning && activeIslandOrderNo == trip.orderNo,
                                         onToggleIsland = {
                                             toggleIslandForTrip(trip.orderNo)
@@ -1099,7 +1101,7 @@ class MainActivity : ComponentActivity() {
                     LiveIslandScheduler.scheduleAutoLaunch(context)
 
                     scope.launch {
-                        snackbarHostState.showSnackbar("设置已保存，灵动岛智能调度已更新")
+                        snackbarHostState.showSnackbar("设置已保存")
                         if ((mode == 0 && cloudUrl.isNotBlank() && cloudUser.isNotBlank() && cloudPass.isNotBlank()) ||
                             (mode == 1 && imapHost.isNotBlank() && imapUser.isNotBlank() && imapPass.isNotBlank())) {
                             isSyncingMail = true
@@ -1255,7 +1257,7 @@ private fun EmptyUpcomingCard(
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "可一键扫描本地 12306 购票短信，或连接邮箱自动拉取行程。",
+                text = "支持读取本地 12306 短信、邮箱同步或手动粘贴导入。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1303,7 +1305,7 @@ private fun InTransitEmptyCard() {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "当列车发车后，此处将实时展示行驶进度、预计到站时刻及沿途停靠站。",
+                text = "列车发车后，将在此显示运行进度与停靠站信息。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1337,7 +1339,7 @@ private fun CompletedEmptyCard() {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "已过到站时间的车次将自动整理归档至此处。",
+                text = "已到站的车次会自动归类到这里。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1364,14 +1366,14 @@ private fun WidgetPinGuideCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "一键添加到桌面小组件",
+                    text = "桌面小组件",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             }
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "点击下方按钮直接调起系统添加弹窗（完美适配 MIUI 14 / HyperOS）：",
+                text = "点击按钮直接添加到手机桌面：",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -1405,7 +1407,7 @@ private fun WidgetPinGuideCard(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("添加 4×4 全景看板（含途经时刻表与刷新按钮）", fontSize = 12.sp)
+                Text("添加 4×4 大卡片（含时刻表）", fontSize = 12.sp)
             }
 
             Spacer(modifier = Modifier.height(14.dp))
