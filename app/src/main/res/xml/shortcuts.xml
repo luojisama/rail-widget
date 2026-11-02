@@ -2,6 +2,19 @@
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
 
     <shortcut
+        android:shortcutId="refresh_status"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_refresh_short"
+        android:shortcutLongLabel="@string/shortcut_refresh_long">
+        <intent
+            android:action="team.shiro.railwidget.action.REFRESH_STATUS"
+            android:targetPackage="team.shiro.railwidget"
+            android:targetClass="team.shiro.railwidget.ui.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
         android:shortcutId="add_widget_4x2"
         android:enabled="true"
         android:icon="@mipmap/ic_launcher"

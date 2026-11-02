@@ -54,7 +54,11 @@ class LiveIslandView(private val context: Context) {
     private val btnCloseExpanded = TextView(context)
     private val tvExpandedRoute = TextView(context)
     private val tvExpandedTimes = TextView(context)
+    private val layoutExpandedPosition = LinearLayout(context)
+    private val tvExpandedPositionDetail = TextView(context)
+    private val tvExpandedPositionBadge = TextView(context)
     private val tvExpandedSeat = TextView(context)
+    private val tvExpandedExtra = TextView(context)
     private val tvExpandedGate = TextView(context)
     private val btnOpenApp = TextView(context)
 
@@ -278,6 +282,34 @@ class LiveIslandView(private val context: Context) {
         tvExpandedTimes.setPadding(0, 0, 0, (10 * dp).toInt())
         expandedLayout.addView(tvExpandedTimes)
 
+        // 在途当前到站/下一站详情与来源标签
+        layoutExpandedPosition.orientation = LinearLayout.HORIZONTAL
+        layoutExpandedPosition.gravity = Gravity.CENTER_VERTICAL
+        layoutExpandedPosition.setPadding(0, 0, 0, (10 * dp).toInt())
+        layoutExpandedPosition.visibility = View.GONE
+
+        tvExpandedPositionDetail.setTextColor(Color.parseColor("#38BDF8"))
+        tvExpandedPositionDetail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        tvExpandedPositionDetail.setTypeface(null, android.graphics.Typeface.BOLD)
+        val posDetailLp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        tvExpandedPositionDetail.layoutParams = posDetailLp
+        layoutExpandedPosition.addView(tvExpandedPositionDetail)
+
+        val badgeBg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 4 * dp
+            setColor(Color.parseColor("#1E293B"))
+            setStroke((1 * dp).toInt(), Color.parseColor("#334155"))
+        }
+        tvExpandedPositionBadge.background = badgeBg
+        tvExpandedPositionBadge.setTextColor(Color.parseColor("#94A3B8"))
+        tvExpandedPositionBadge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+        tvExpandedPositionBadge.setTypeface(null, android.graphics.Typeface.BOLD)
+        tvExpandedPositionBadge.setPadding((6 * dp).toInt(), (2 * dp).toInt(), (6 * dp).toInt(), (2 * dp).toInt())
+        layoutExpandedPosition.addView(tvExpandedPositionBadge)
+
+        expandedLayout.addView(layoutExpandedPosition)
+
         // 分割线
         val divider = View(context).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (1 * dp).toInt()).apply {
@@ -291,6 +323,13 @@ class LiveIslandView(private val context: Context) {
         tvExpandedSeat.setTextColor(Color.parseColor("#CBD5E1"))
         tvExpandedSeat.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
         expandedLayout.addView(tvExpandedSeat)
+
+        // 底部列车扩展信息（站台、餐车、车型、局段配属）
+        tvExpandedExtra.setTextColor(Color.parseColor("#94A3B8"))
+        tvExpandedExtra.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        tvExpandedExtra.setPadding(0, (4 * dp).toInt(), 0, 0)
+        tvExpandedExtra.visibility = View.GONE
+        expandedLayout.addView(tvExpandedExtra)
 
         // 底部操作区：检票口 + 进入铁行卡片按钮
         val bottomRow = LinearLayout(context).apply {
@@ -430,7 +469,9 @@ class LiveIslandView(private val context: Context) {
         // 2. 更新右翼：检票口高亮药丸 (重点保留检票口，如 "检 16A")
         val gate = trip.getCleanTicketGate()
         val shortGate = getShortGate(gate)
-        val stage = trip.getStage()
+        val now = System.currentTimeMillis()
+        val pos = trip.currentPosition(now)
+        val stage = trip.getStage(now)
 
         if (shortGate.isNotBlank()) {
             tvCompactRight.text = "检 $shortGate"
@@ -441,7 +482,13 @@ class LiveIslandView(private val context: Context) {
             (tvCompactRight.background as? GradientDrawable)?.setColor(Color.parseColor("#334155"))
             tvCompactRight.setTextColor(Color.parseColor("#94A3B8"))
         } else if (stage == TripStage.IN_TRANSIT) {
-            tvCompactRight.text = "运行中"
+            val transitText = if (pos != null && pos.stationName(trip).isNotBlank()) {
+                val sName = pos.stationName(trip)
+                if (pos.atStation) "当前：$sName" else "下一站：$sName"
+            } else {
+                "运行中"
+            }
+            tvCompactRight.text = transitText
             (tvCompactRight.background as? GradientDrawable)?.setColor(Color.parseColor("#065F46"))
             tvCompactRight.setTextColor(Color.parseColor("#34D399"))
         } else {
@@ -476,10 +523,18 @@ class LiveIslandView(private val context: Context) {
         tvExpandedStatus.setTextColor(stColor)
         (tvExpandedStatus.background as? GradientDrawable)?.setColor(stBg)
 
-        tvExpandedRoute.text = trip.currentPosition()?.label(trip) ?: "${trip.departureStation}  →  ${trip.arrivalStation}"
+        tvExpandedRoute.text = "${trip.departureStation}  →  ${trip.arrivalStation}"
         val arrTime = if (trip.arrivalTime.isNotBlank() && trip.arrivalTime != "00:00") trip.arrivalTime else "--:--"
         val closeNotice = if (stage == TripStage.COMPLETED) " · 15m后自动关闭" else ""
         tvExpandedTimes.text = "发车 $depTime  ·  到达 $arrTime$closeNotice"
+
+        if (pos != null) {
+            layoutExpandedPosition.visibility = View.VISIBLE
+            tvExpandedPositionDetail.text = pos.detailLabel(trip, now)
+            tvExpandedPositionBadge.text = pos.sourceBadge()
+        } else {
+            layoutExpandedPosition.visibility = View.GONE
+        }
 
         val seatStr = if (trip.carriage.isNotBlank() || trip.seat.isNotBlank()) {
             val tTag = if (trip.ticketType == "列车补票") " · 补票" else ""
@@ -488,6 +543,29 @@ class LiveIslandView(private val context: Context) {
             "席位待出 · ${trip.seatType}"
         }
         tvExpandedSeat.text = seatStr
+
+        // 展开大卡底部信息行紧凑展示扩展资料：站台、餐车、车型、配属局段
+        val extraParts = mutableListOf<String>()
+        if (trip.platform.isNotBlank()) {
+            val p = if (trip.platform.endsWith("站台")) trip.platform else "${trip.platform}站台"
+            extraParts.add(p)
+        }
+        if (trip.diningCar.isNotBlank()) {
+            val d = if (trip.diningCar.contains("餐车")) trip.diningCar else "${trip.diningCar}餐车"
+            extraParts.add(d)
+        }
+        if (trip.trainModel.isNotBlank()) {
+            extraParts.add(trip.trainModel)
+        }
+        if (trip.railwayBureau.isNotBlank()) {
+            extraParts.add(trip.railwayBureau)
+        }
+        if (extraParts.isNotEmpty()) {
+            tvExpandedExtra.visibility = View.VISIBLE
+            tvExpandedExtra.text = extraParts.joinToString(" · ")
+        } else {
+            tvExpandedExtra.visibility = View.GONE
+        }
 
         val gateDesc = if (gate.isNotBlank() && gate != "暂无") "检票口：$gate" else "检票口：待候车大屏公布"
         tvExpandedGate.text = gateDesc

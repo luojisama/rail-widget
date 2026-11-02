@@ -75,4 +75,14 @@ class TripTimelineTest {
         })
         assertEquals(at("2026-10-29", "02:00"), t.getArrivalTimeMillis())
     }
+    @Test fun detailLabelAndProgressAreAccurateDuringTransit() {
+        val t = trip()
+        val midTime = at("2026-10-27", "00:10")
+        val pos = t.currentPosition(midTime)!!
+        assertEquals("丙", pos.stationName(t))
+        assertEquals("即将到达", pos.statusBadge())
+        assertTrue(pos.detailLabel(t, midTime).contains("下一站：丙 · 00:30 到（约 20 分钟）"))
+        val prog = TripTimeline.progress(t, at("2026-10-27", "00:45"))
+        assertEquals(0.5f, prog, 0.01f)
+    }
 }

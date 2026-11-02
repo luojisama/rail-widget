@@ -135,6 +135,7 @@ class MainActivity : ComponentActivity() {
     private var pendingAction: String? = null
     var onPinBlocked: (() -> Unit)? = null
     var onResumeCallback: (() -> Unit)? = null
+    var onRefreshRequested: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -200,6 +201,7 @@ class MainActivity : ComponentActivity() {
         when (action) {
             "team.shiro.railwidget.action.PIN_4X2" -> requestPinWidget(TripWidget4x2Receiver::class.java)
             "team.shiro.railwidget.action.PIN_2X2" -> requestPinWidget(TripWidget2x2Receiver::class.java)
+            TripRefresh.ACTION_SHORTCUT_REFRESH -> onRefreshRequested?.invoke()
         }
     }
 
@@ -308,14 +310,36 @@ class MainActivity : ComponentActivity() {
                 }
             }
             ContextCompat.registerReceiver(context, receiver, IntentFilter(TripRefresh.ACTION_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
-            onDispose { context.unregisterReceiver(receiver); activity?.onResumeCallback = null }
+            onDispose { context.unregisterReceiver(receiver); activity?.onResumeCallback = null; activity?.onRefreshRequested = null }
         }
+        var lastAutoRefreshTime by remember { mutableLongStateOf(0L) }
         LaunchedEffect(Unit) {
             lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
                 while (true) {
-                    currentTime = System.currentTimeMillis()
+                    val now = System.currentTimeMillis()
+                    currentTime = now
                     isIslandRunning = LiveIslandService.isServiceRunning
                     activeIslandOrderNo = LiveIslandService.currentOrderNo
+
+                    val currentTrips = trips
+                    val hasInTransit = currentTrips.any { !it.isArchived && it.getStage(now) == TripStage.IN_TRANSIT }
+                    val hasSoonDeparting = currentTrips.any {
+                        if (it.isArchived || it.getStage(now) != TripStage.UPCOMING) return@any false
+                        val diff = it.getDepartureTimeMillis() - now
+                        diff in 0..(30 * 60 * 1000L)
+                    }
+
+                    if ((hasInTransit || hasSoonDeparting) && now - lastAutoRefreshTime >= 120_000L) {
+                        lastAutoRefreshTime = now
+                        withContext(Dispatchers.IO) {
+                            try {
+                                TripRefresh.refresh(context, force = false)
+                            } catch (e: Exception) {
+                                android.util.Log.w("MainActivity", "Auto in-transit refresh skipped", e)
+                            }
+                        }
+                    }
+
                     delay(1000L)
                 }
             }
@@ -333,6 +357,7 @@ class MainActivity : ComponentActivity() {
                 } finally { isRefreshingStatus = false }
             }
         }
+        activity?.onRefreshRequested = { refreshStatus() }
 
         var isAutoLaunchOn by remember { mutableStateOf(LiveIslandScheduler.isAutoLaunchEnabled(context)) }
         var leadMinutes by remember { mutableLongStateOf(LiveIslandScheduler.getAutoLeadMinutes(context)) }
@@ -471,6 +496,10 @@ class MainActivity : ComponentActivity() {
                     triggerSmsSync()
                     pendingAction = null
                 }
+                TripRefresh.ACTION_SHORTCUT_REFRESH -> {
+                    refreshStatus()
+                    pendingAction = null
+                }
             }
         }
 
@@ -537,6 +566,15 @@ class MainActivity : ComponentActivity() {
             Triple(upcoming, inTransit, completed)
         }
 
+        val latestCheckedAt = remember(trips, currentTime) {
+            trips.filter { !it.isArchived }
+                .map { maxOf(it.dataCheckedAt, it.liveCheckedAt) }
+                .maxOrNull() ?: 0L
+        }
+        val freshnessText = remember(latestCheckedAt, currentTime) {
+            if (latestCheckedAt > 0L) TripRefresh.formatFreshness(latestCheckedAt, 0L, currentTime) else null
+        }
+
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
@@ -553,8 +591,9 @@ class MainActivity : ComponentActivity() {
                                 )
                                 Text(
                                     text = when {
-                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".visual") -> "视觉预览 · 原版本保留"
-                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".diagnostic") -> "启动排查 · 原数据保留"
+                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".visual") -> "视觉预览" + (freshnessText?.let { " · $it" } ?: " · 原版本保留")
+                                        team.shiro.railwidget.BuildConfig.APPLICATION_ID.endsWith(".diagnostic") -> "启动排查" + (freshnessText?.let { " · $it" } ?: " · 原数据保留")
+                                        freshnessText != null -> "铁路行程 · $freshnessText"
                                         else -> "铁路行程与桌面小组件"
                                     },
                                     maxLines = 1,

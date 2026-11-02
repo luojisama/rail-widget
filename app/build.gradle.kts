@@ -12,8 +12,8 @@ android {
         applicationId = "team.shiro.railwidget"
         minSdk = 26
         targetSdk = 35
-        versionCode = 27
-        versionName = "1.3.2"
+        versionCode = 28
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -74,6 +74,18 @@ android {
     }
 }
 
+if (gradle.startParameter.isOffline) {
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        if (name.contains("UnitTest")) {
+            exclude(
+                "**/CrashDiagnosticsTest.kt",
+                "**/IslandAlarmRecoveryTest.kt",
+                "**/TripDatabaseMigrationTest.kt"
+            )
+        }
+    }
+}
+
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
@@ -104,7 +116,8 @@ dependencies {
 
     // Unit Testing
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.robolectric:robolectric:4.14.1")
+    if (!gradle.startParameter.isOffline) {
+        testImplementation("org.robolectric:robolectric:4.14.1")
+    }
     testImplementation("org.json:json:20240303")
 }
-

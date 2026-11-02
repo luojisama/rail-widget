@@ -66,4 +66,29 @@ class TrainDetailsTest {
         val t = trip.copy(totalMileageKm = 1318.0, rideMileageKm = 1318.0)
         assertEquals(1318.0, TrainDetails.applyInfo(t, response(), 100).totalMileageKm!!, 0.01)
     }
+    @Test fun officialPlatformClearsReferenceFlag() {
+        val refTrip = trip.copy(
+            platform = "13",
+            platformReference = true,
+            stops = listOf(
+                StopInfo("01", "北京南", "----", "08:00", "始发", platform = "13", platformReference = true),
+                StopInfo("02", "上海虹桥", "12:30", "----", "终到")
+            )
+        )
+        // 12306 official platform "7" should override reference platform and clear flag
+        val updated = TrainDetails.applyInfo(refTrip, response(), 100)
+        assertEquals("7", updated.platform)
+        assertFalse(updated.platformReference)
+        assertEquals("7", updated.stops[0].platform)
+        assertFalse(updated.stops[0].platformReference)
+
+        // When official platform is missing, retain reference platform and flag
+        val noPlatJson = response()
+        noPlatJson.getJSONObject("data").getJSONObject("trainDetail").getJSONArray("stopTime").getJSONObject(0).remove("platform")
+        val retained = TrainDetails.applyInfo(refTrip, noPlatJson, 100)
+        assertEquals("13", retained.platform)
+        assertTrue(retained.platformReference)
+        assertEquals("13", retained.stops[0].platform)
+        assertTrue(retained.stops[0].platformReference)
+    }
 }

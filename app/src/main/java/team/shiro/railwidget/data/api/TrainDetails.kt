@@ -29,27 +29,34 @@ object TrainDetails {
         val stops = baseStops.map { stop ->
             val matches = indexed.filter { TripTimeline.station(it.text("stationName")) == TripTimeline.station(stop.stationName) }
             val row = matches.singleOrNull() ?: matches.find { it.text("stationNo").toIntOrNull() == stop.stationNo.toIntOrNull() }
-            if (row == null) stop else stop.copy(
-                ticketGate = row.text("wicket").ifBlank { stop.ticketGate },
-                // A gate is not a platform. Only the explicitly named platform field is accepted.
-                platform = row.text("platform").ifBlank { stop.platform },
-                mileageKm = if (hasMileage) distances[indexed.indexOf(row)] else stop.mileageKm,
-                arrivalDay = row.text("dayDifference").toIntOrNull() ?: stop.arrivalDay,
-                actualArrival = timestamp(row.text("fact_arraive_date_time")) ?: stop.actualArrival,
-                actualDeparture = timestamp(row.text("fact_train_date_time")) ?: stop.actualDeparture
-            )
+            if (row == null) stop else {
+                val officialPlatform = row.text("platform")
+                stop.copy(
+                    ticketGate = row.text("wicket").ifBlank { stop.ticketGate },
+                    // A gate is not a platform. Only the explicitly named platform field is accepted.
+                    platform = officialPlatform.ifBlank { stop.platform },
+                    platformReference = if (officialPlatform.isNotBlank()) false else stop.platformReference,
+                    mileageKm = if (hasMileage) distances[indexed.indexOf(row)] else stop.mileageKm,
+                    arrivalDay = row.text("dayDifference").toIntOrNull() ?: stop.arrivalDay,
+                    actualArrival = timestamp(row.text("fact_arraive_date_time")) ?: stop.actualArrival,
+                    actualDeparture = timestamp(row.text("fact_train_date_time")) ?: stop.actualDeparture
+                )
+            }
         }
         val boarding = stops.find { TripTimeline.station(it.stationName) == TripTimeline.station(trip.departureStation) }
         val boardingIndex = stops.indexOf(boarding)
         val alighting = stops.drop(boardingIndex + 1).find { TripTimeline.station(it.stationName) == TripTimeline.station(trip.arrivalStation) }
         val rideMileage = if (boarding?.mileageKm != null && alighting?.mileageKm != null)
             (alighting.mileageKm - boarding.mileageKm).takeIf { it > 0 } else null
+        val newPlatform = boarding?.platform.orEmpty().ifBlank { trip.platform }
+        val newPlatformRef = if (boarding != null && boarding.platform.isNotBlank()) boarding.platformReference else trip.platformReference
         return trip.copy(
             stops = stops,
             trainModel = first.text("jiaolu_train_style").ifBlank { trip.trainModel },
             railwayBureau = first.text("jiaolu_corporation_code").takeUnless { it.matches(Regex("[A-Za-z0-9]+")) }.orEmpty().ifBlank { trip.railwayBureau },
             ticketGate = if (trip.ticketGateManual) trip.ticketGate else boarding?.ticketGate.orEmpty().ifBlank { trip.ticketGate },
-            platform = boarding?.platform.orEmpty().ifBlank { trip.platform },
+            platform = newPlatform,
+            platformReference = newPlatformRef,
             totalMileageKm = if (hasMileage) distances.last() else trip.totalMileageKm,
             rideMileageKm = rideMileage ?: trip.rideMileageKm,
             liveCheckedAt = now, dataCheckedAt = now,

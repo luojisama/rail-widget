@@ -11,6 +11,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import team.shiro.railwidget.data.api.LulutongData
@@ -24,6 +25,7 @@ import java.util.concurrent.TimeUnit
 
 object TripRefresh {
     const val ACTION_CHANGED = "team.shiro.railwidget.action.TRIPS_CHANGED"
+    const val ACTION_SHORTCUT_REFRESH = "team.shiro.railwidget.action.REFRESH_STATUS"
     private val attempts = mutableMapOf<String, Long>()
     data class Result(val requested: Int, val updated: Int) {
         val message: String get() = when {
@@ -31,6 +33,18 @@ object TripRefresh {
             updated == 0 -> "状态已更新，暂未取得新的列车数据，保留已有信息"
             updated < requested -> "已更新 $updated/$requested 个行程，其余保留已有信息"
             else -> "行程状态与列车资料已更新"
+        }
+    }
+
+    fun formatFreshness(dataCheckedAt: Long, liveCheckedAt: Long = 0L, now: Long = System.currentTimeMillis()): String {
+        val ts = maxOf(dataCheckedAt, liveCheckedAt)
+        if (ts <= 0L) return "待刷新"
+        val diffMin = ((now - ts).coerceAtLeast(0L)) / 60_000L
+        return when {
+            diffMin < 1 -> "刚刚更新"
+            diffMin < 60 -> "${diffMin}分钟前更新"
+            diffMin < 1440 -> "${diffMin / 60}小时前更新"
+            else -> "${diffMin / 1440}天前更新"
         }
     }
 
@@ -77,6 +91,19 @@ object TripRefresh {
         }
     }
 
+    fun enqueueForce(context: Context) {
+        publish(context)
+        try {
+            val request = OneTimeWorkRequestBuilder<TripRefreshWorker>()
+                .setInputData(workDataOf("force" to true))
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork("trip-refresh", ExistingWorkPolicy.REPLACE, request)
+        } catch (error: RuntimeException) {
+            team.shiro.railwidget.diagnostics.CrashDiagnostics.record(context, "BackgroundEnqueueForce", error)
+            android.util.Log.e("TripRefresh", "Unable to enqueue background force refresh", error)
+        }
+    }
+
     fun initialize(context: Context) {
         WorkManager.getInstance(context).enqueueUniquePeriodicWork("trip-refresh-periodic", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<TripRefreshWorker>(15, TimeUnit.MINUTES)
@@ -89,7 +116,8 @@ object TripRefresh {
 class TripRefreshWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         try {
-            TripRefresh.refresh(applicationContext)
+            val force = inputData.getBoolean("force", false)
+            TripRefresh.refresh(applicationContext, force = force)
             Result.success()
         } catch (error: Exception) {
             android.util.Log.w("TripRefresh", "刷新未完成，保留缓存", error)

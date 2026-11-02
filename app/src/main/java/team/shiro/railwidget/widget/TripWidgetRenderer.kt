@@ -55,9 +55,17 @@ object TripWidgetRenderer {
         val views = RemoteViews(context.packageName, R.layout.widget_trip_2x2)
         views.setTextViewText(R.id.tv_train_code, trip.trainCode)
 
-        val stage = trip.getStage()
+        val now = System.currentTimeMillis()
+        val pos = trip.currentPosition(now)
+        val stage = trip.getStage(now)
         if (stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT) {
-            views.setTextViewText(R.id.tv_dep_time, "● 运行中")
+            val transitText = if (pos != null && pos.stationName(trip).isNotBlank()) {
+                val sName = pos.stationName(trip)
+                if (pos.atStation) "● 停靠 $sName" else "● 下站 $sName"
+            } else {
+                "● 运行中"
+            }
+            views.setTextViewText(R.id.tv_dep_time, transitText)
             views.setTextColor(R.id.tv_dep_time, android.graphics.Color.parseColor("#0F766E"))
         } else {
             val depTime2x2 = if (trip.departureTime.isBlank() || trip.departureTime == "00:00") "--:--" else "${trip.departureTime} 开"
@@ -77,6 +85,18 @@ object TripWidgetRenderer {
         val gate = trip.getCleanTicketGate()
         views.setTextViewText(R.id.tv_gate, if (gate.isBlank()) "检票口 --" else gate)
 
+        // 绑定刷新按钮
+        val refreshIntent = Intent(context, TripWidget2x2Receiver::class.java).apply {
+            action = ACTION_REFRESH_SYNC
+        }
+        val refreshPendingIntent = PendingIntent.getBroadcast(
+            context,
+            2001,
+            refreshIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        views.setOnClickPendingIntent(R.id.btn_refresh, refreshPendingIntent)
+
         // 根区域与检票口独立点击热区
         views.setOnClickPendingIntent(R.id.widget_root, createOpenAppIntent(context, trip.orderNo))
         views.setOnClickPendingIntent(R.id.tv_gate, createOpenAppIntent(context, trip.orderNo, focusGate = true))
@@ -95,23 +115,32 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_date, trip.departureDate.substringAfter("-"))
 
         // 状态自适应背景与色彩
-        val stage = trip.getStage()
+        val now = System.currentTimeMillis()
+        val pos = trip.currentPosition(now)
+        val stage = trip.getStage(now)
         val statusText = when {
             stage == team.shiro.railwidget.data.model.TripStage.COMPLETED -> "已结束"
-            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT -> "运行中"
-            else -> trip.computeStatus()
+            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT -> {
+                if (pos != null && pos.stationName(trip).isNotBlank()) {
+                    val sName = pos.stationName(trip)
+                    if (pos.atStation) "当前停靠 · $sName" else "运行中 · 下一站 $sName"
+                } else {
+                    "运行中"
+                }
+            }
+            else -> trip.computeStatus(now)
         }
         views.setTextViewText(R.id.tv_status, statusText)
-        when (statusText) {
-            "正在检票" -> {
+        when {
+            statusText == "正在检票" -> {
                 views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_boarding)
                 views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#BA1A1A"))
             }
-            "运行中" -> {
+            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT || statusText.startsWith("运行中") || statusText.startsWith("当前停靠") -> {
                 views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_intransit)
                 views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#004F98"))
             }
-            "已结束", "已到达" -> {
+            statusText == "已结束" || statusText == "已到达" -> {
                 views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_completed)
                 views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#64748B"))
             }
@@ -144,6 +173,18 @@ object TripWidgetRenderer {
         val gate = trip.getCleanTicketGate()
         views.setTextViewText(R.id.tv_gate, if (gate.isBlank() || gate == "暂无") "检票口 未出" else "检票口 $gate")
 
+        // 绑定刷新按钮
+        val refreshIntent = Intent(context, TripWidget4x2Receiver::class.java).apply {
+            action = ACTION_REFRESH_SYNC
+        }
+        val refreshPendingIntent = PendingIntent.getBroadcast(
+            context,
+            2002,
+            refreshIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        views.setOnClickPendingIntent(R.id.btn_refresh, refreshPendingIntent)
+
         // 根区域与检票口独立点击热区
         views.setOnClickPendingIntent(R.id.widget_root, createOpenAppIntent(context, trip.orderNo))
         views.setOnClickPendingIntent(R.id.tv_gate, createOpenAppIntent(context, trip.orderNo, focusGate = true))
@@ -163,23 +204,32 @@ object TripWidgetRenderer {
         views.setTextViewText(R.id.tv_date, trip.departureDate)
 
         // 状态自适应背景与色彩
-        val stage = trip.getStage()
+        val now = System.currentTimeMillis()
+        val pos = trip.currentPosition(now)
+        val stage = trip.getStage(now)
         val statusText = when {
             stage == team.shiro.railwidget.data.model.TripStage.COMPLETED -> "已结束"
-            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT -> "运行中"
-            else -> trip.computeStatus()
+            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT -> {
+                if (pos != null && pos.stationName(trip).isNotBlank()) {
+                    val sName = pos.stationName(trip)
+                    if (pos.atStation) "当前停靠 · $sName" else "运行中 · 下一站 $sName"
+                } else {
+                    "运行中"
+                }
+            }
+            else -> trip.computeStatus(now)
         }
         views.setTextViewText(R.id.tv_status, statusText)
-        when (statusText) {
-            "正在检票" -> {
+        when {
+            statusText == "正在检票" -> {
                 views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_boarding)
                 views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#BA1A1A"))
             }
-            "运行中" -> {
+            stage == team.shiro.railwidget.data.model.TripStage.IN_TRANSIT || statusText.startsWith("运行中") || statusText.startsWith("当前停靠") -> {
                 views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_intransit)
                 views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#004F98"))
             }
-            "已结束", "已到达" -> {
+            statusText == "已结束" || statusText == "已到达" -> {
                 views.setInt(R.id.tv_status, "setBackgroundResource", R.drawable.bg_status_pill_completed)
                 views.setTextColor(R.id.tv_status, android.graphics.Color.parseColor("#64748B"))
             }
@@ -290,7 +340,7 @@ object TripWidgetRenderer {
             } else {
                 "共 ${trip.stops.size} 站"
             }
-            views.setTextViewText(R.id.tv_stops_badge, trip.currentPosition()?.label(trip) ?: badgeText)
+            views.setTextViewText(R.id.tv_stops_badge, pos?.label(trip) ?: badgeText)
 
             for (i in 0 until 5) {
                 if (i < displayStops.size) {
@@ -300,11 +350,28 @@ object TripWidgetRenderer {
                     val isBoarding = stop.stationName.replace("站", "").trim().equals(targetDep, ignoreCase = true)
                     val isAlighting = stop.stationName.replace("站", "").trim().equals(targetArr, ignoreCase = true)
 
-                    val prefix = if (isBoarding || isAlighting) "● " else "  "
-                    val suffix = when {
+                    val isPosHit = pos != null && (
+                        trip.stops.indexOf(stop) == pos.index ||
+                        trip.stops.getOrNull(pos.index)?.stationName == stop.stationName
+                    )
+                    val isCurrentStop = isPosHit && pos.atStation
+                    val isNextStop = isPosHit && !pos.atStation
+
+                    val prefix = if (isBoarding || isAlighting || isPosHit) "● " else "  "
+                    val posTag = when {
+                        isCurrentStop -> " (当前)"
+                        isNextStop -> " (下一站)"
+                        else -> ""
+                    }
+                    val roleTag = when {
                         isBoarding -> " (上车)"
                         isAlighting -> " (下车)"
                         else -> ""
+                    }
+                    val suffix = if (posTag.isNotBlank()) {
+                        if (roleTag.isNotBlank()) "$roleTag$posTag" else posTag
+                    } else {
+                        roleTag
                     }
                     views.setTextViewText(nameIds[i], "$prefix${stop.stationNo} ${stop.stationName}$suffix")
 
@@ -331,6 +398,17 @@ object TripWidgetRenderer {
                         else -> "${stop.arriveTime}到 / ${stop.startTime}开"
                     }
                     views.setTextViewText(timeIds[i], timeStr)
+
+                    if (isPosHit) {
+                        views.setTextColor(nameIds[i], android.graphics.Color.parseColor("#005AC1"))
+                        views.setTextColor(timeIds[i], android.graphics.Color.parseColor("#005AC1"))
+                    } else if (isBoarding || isAlighting) {
+                        views.setTextColor(nameIds[i], android.graphics.Color.parseColor("#1A1C1E"))
+                        views.setTextColor(timeIds[i], android.graphics.Color.parseColor("#475569"))
+                    } else {
+                        views.setTextColor(nameIds[i], android.graphics.Color.parseColor("#475569"))
+                        views.setTextColor(timeIds[i], android.graphics.Color.parseColor("#64748B"))
+                    }
                 } else {
                     views.setViewVisibility(rowIds[i], android.view.View.GONE)
                 }
@@ -385,7 +463,10 @@ object TripWidgetRenderer {
         val isBoarding: Boolean,
         val isAlighting: Boolean,
         val nameText: String,
-        val timeText: String
+        val timeText: String,
+        val isCurrentStop: Boolean = false,
+        val isNextStop: Boolean = false,
+        val isPassed: Boolean = false
     )
 
     data class WidgetStopsResult(
@@ -435,8 +516,8 @@ object TripWidgetRenderer {
                         for (s in middleStops) {
                             if (!list.contains(s)) {
                                 list.add(s)
-                                if (list.size == 4) break
                             }
+                            if (list.size == 4) break
                         }
                     }
                     list.add(rideSpan.last())
@@ -520,4 +601,3 @@ object TripWidgetRenderer {
         return WidgetStopsResult(badgeText, items)
     }
 }
-

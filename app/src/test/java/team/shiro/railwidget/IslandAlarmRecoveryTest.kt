@@ -14,6 +14,7 @@ import org.robolectric.shadows.ShadowAlarmManager
 import team.shiro.railwidget.data.local.TripDatabaseHelper
 import team.shiro.railwidget.data.model.Trip
 import team.shiro.railwidget.data.model.TripTimeline
+import team.shiro.railwidget.island.IslandOverlayHost
 import team.shiro.railwidget.island.LiveIslandAutoLaunchReceiver
 import team.shiro.railwidget.island.LiveIslandScheduler
 import java.time.Instant
@@ -22,7 +23,9 @@ import java.time.format.DateTimeFormatter
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [33], application = Application::class)
 class IslandAlarmRecoveryTest {
-    @Test fun reschedulesAfterPermissionAndBootAndCancelsDeletedTrips() {
+
+    @Test
+    fun reschedulesAfterPermissionAndBootAndCancelsDeletedTrips() {
         val context = RuntimeEnvironment.getApplication()
         val db = TripDatabaseHelper.getInstance(context)
         val departure = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(TripTimeline.zone).plusHours(3).withSecond(0).withNano(0)
@@ -63,5 +66,46 @@ class IslandAlarmRecoveryTest {
         db.setSetting(LiveIslandScheduler.KEY_AUTO_LAUNCH_ENABLED, "0")
         LiveIslandScheduler.scheduleAutoLaunch(context)
         assertTrue(alarms().isEmpty())
+    }
+
+    @Test
+    fun testAlarmClockModeSettingAndNextAlarmMillis() {
+        val context = RuntimeEnvironment.getApplication()
+        val db = TripDatabaseHelper.getInstance(context)
+        val departure = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(TripTimeline.zone).plusHours(2).withSecond(0).withNano(0)
+        val arrival = departure.plusHours(2)
+        val trip = Trip("alarm-clock-test", "乙", "G102", departureStation = "北京南", arrivalStation = "天津",
+            departureDate = departure.toLocalDate().toString(), departureTime = departure.format(DateTimeFormatter.ofPattern("HH:mm")),
+            arrivalTime = arrival.format(DateTimeFormatter.ofPattern("HH:mm")))
+        db.insertOrUpdateTrip(trip)
+        db.setSetting(LiveIslandScheduler.KEY_AUTO_LAUNCH_ENABLED, "1")
+        db.setSetting(LiveIslandScheduler.KEY_AUTO_LEAD_MINUTES, "60")
+        db.setSetting("island_use_alarm_clock", "0") // 禁用 AlarmClock，使用 setExactAndAllowWhileIdle
+
+        val manager = context.getSystemService(AlarmManager::class.java)
+        ShadowAlarmManager.setCanScheduleExactAlarms(true)
+        LiveIslandScheduler.scheduleAutoLaunch(context)
+
+        val alarms = shadowOf(manager).scheduledAlarms.filter {
+            shadowOf(it.operation).savedIntent.action == LiveIslandAutoLaunchReceiver.ACTION_AUTO_LAUNCH
+        }
+        assertEquals(1, alarms.size)
+        val expectedTarget = trip.getDepartureTimeMillis() - 3_600_000L
+        assertEquals(expectedTarget, alarms.single().triggerAtTime)
+        assertEquals(expectedTarget.toString(), db.getSetting("island_next_alarm_millis"))
+        assertTrue(db.getSetting("island_alarm_status").contains("已安排精确定时唤起"))
+
+        // 测试无待唤起行程
+        db.deleteTrip(trip.orderNo)
+        LiveIslandScheduler.scheduleAutoLaunch(context)
+        assertEquals("当前无待唤起行程", db.getSetting("island_alarm_status"))
+        assertEquals("", db.getSetting("island_next_alarm_millis"))
+    }
+
+    @Test
+    fun testOverlayHostLifecycle() {
+        assertFalse(IslandOverlayHost.isAttached)
+        IslandOverlayHost.detach()
+        assertFalse(IslandOverlayHost.isAttached)
     }
 }

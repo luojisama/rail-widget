@@ -54,6 +54,40 @@ object TripTimeline {
     data class Position(val index: Int, val atStation: Boolean, val realtime: Boolean) {
         fun label(trip: Trip): String = (if (atStation) "当前到站：" else "下一站：") +
             trip.stops[index].stationName + if (realtime) " · 实时到发" else " · 按时刻表推算"
+
+        fun stationName(trip: Trip): String = trip.stops.getOrNull(index)?.stationName.orEmpty()
+
+        fun statusBadge(): String = if (atStation) "当前停靠" else "即将到达"
+
+        fun sourceBadge(): String = if (realtime) "实时到发" else "时刻表推算"
+
+        fun detailLabel(trip: Trip, now: Long = System.currentTimeMillis()): String {
+            val stop = trip.stops.getOrNull(index) ?: return label(trip)
+            val ev = events(trip).getOrNull(index)
+            return if (atStation) {
+                val depTime = stop.startTime.takeIf { it.isNotBlank() && !it.contains("-") }
+                val depSuffix = if (depTime != null) " · $depTime 开" else ""
+                "当前到站：${stop.stationName}$depSuffix"
+            } else {
+                val arrTime = stop.arriveTime.takeIf { it.isNotBlank() && !it.contains("-") } ?: stop.startTime
+                val etaMillis = ev?.arrival ?: ev?.departure
+                val mins = if (etaMillis != null && etaMillis > now) ((etaMillis - now + 59_999L) / 60_000L) else null
+                val timePart = if (arrTime.isNotBlank()) " · $arrTime 到" else ""
+                val etaPart = if (mins != null && mins in 1..600) "（约 ${mins} 分钟）" else ""
+                "下一站：${stop.stationName}$timePart$etaPart"
+            }
+        }
+    }
+
+    fun progress(trip: Trip, now: Long = System.currentTimeMillis()): Float {
+        val dep = trip.getDepartureTimeMillis()
+        val arr = trip.getArrivalTimeMillis()
+        if (dep <= 0L || arr <= dep) return 0f
+        return when {
+            now <= dep -> 0f
+            now >= arr -> 1f
+            else -> ((now - dep).toDouble() / (arr - dep).toDouble()).toFloat().coerceIn(0f, 1f)
+        }
     }
 
     fun position(trip: Trip, now: Long): Position? {

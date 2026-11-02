@@ -30,7 +30,6 @@ import java.util.TimeZone
  */
 class LiveIslandService : Service() {
 
-    private var islandView: LiveIslandView? = null
     private val handler = Handler(Looper.getMainLooper())
     private var currentTrip: Trip? = null
     private var lastRefreshRequest = 0L
@@ -75,12 +74,10 @@ class LiveIslandService : Service() {
                         isServiceRunning = true
                         db.setSetting("island_active_order", trip.orderNo)
                         db.setSetting("island_start_status", "灵动岛运行中")
+
+                        // 复用 IslandOverlayHost 挂载的全局悬浮层
                         if (IslandPermissionHelper.hasOverlayPermission(this)) {
-                            if (islandView == null) {
-                                islandView = LiveIslandView(this)
-                                check(islandView?.attach() == true) { "无法显示悬浮窗" }
-                            }
-                            islandView?.updateTrip(trip)
+                            IslandOverlayHost.ensureAttached(this, trip)
                         }
 
                     } catch (error: RuntimeException) {
@@ -120,7 +117,9 @@ class LiveIslandService : Service() {
         currentTrip = refreshed
         currentOrderNo = refreshed.orderNo
 
-        islandView?.updateTrip(refreshed)
+        if (IslandPermissionHelper.hasOverlayPermission(this)) {
+            IslandOverlayHost.update(refreshed)
+        }
         notifyTrip(refreshed)
 
         // 统一计算并调度下一次探测或倒计时刷新
@@ -178,7 +177,9 @@ class LiveIslandService : Service() {
                 // 智能中转换乘接力：不关闭灵动岛，平滑无缝切换至下一程！
                 currentTrip = nextTransfer
                 currentOrderNo = nextTransfer.orderNo
-                islandView?.updateTrip(nextTransfer)
+                if (IslandPermissionHelper.hasOverlayPermission(this)) {
+                    IslandOverlayHost.update(nextTransfer)
+                }
                 notifyTrip(nextTransfer)
 
                 // 同步广播通知桌面小组件局部更新
@@ -311,8 +312,7 @@ class LiveIslandService : Service() {
         isServiceRunning = false
         currentOrderNo = null
         handler.removeCallbacksAndMessages(null)
-        islandView?.detach()
-        islandView = null
+        IslandOverlayHost.detach()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -320,6 +320,7 @@ class LiveIslandService : Service() {
     companion object {
         private const val CHANNEL_ID = "channel_live_island"
         private const val NOTIFICATION_ID = 20260928
+        private const val FALLBACK_NOTIFICATION_ID = 20260929
 
         const val ACTION_START = "team.shiro.railwidget.action.ISLAND_START"
         const val ACTION_UPDATE = "team.shiro.railwidget.action.ISLAND_UPDATE"
@@ -350,7 +351,55 @@ class LiveIslandService : Service() {
             } catch (error: RuntimeException) {
                 db.setSetting("island_start_status", "启动受限：${error.javaClass.simpleName}，请检查后台及自启动权限")
                 android.util.Log.w("LiveIslandService", "Unable to start island", error)
+                sendFallbackNotification(context, orderNo)
                 false
+            }
+        }
+
+        private fun sendFallbackNotification(context: Context, orderNo: String?) {
+            try {
+                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    val channel = NotificationChannel(
+                        CHANNEL_ID,
+                        "铁行灵动胶囊",
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = "在桌面顶部显示实时列车发车倒计时与检票口胶囊"
+                    }
+                    nm.createNotificationChannel(channel)
+                }
+                val db = TripDatabaseHelper.getInstance(context)
+                val trip = if (!orderNo.isNullOrBlank()) db.getTrip(orderNo) else db.getLatestUpcomingTrip()
+                val trainCode = trip?.trainCode ?: "列车"
+                val openAppIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    if (trip != null) putExtra("EXTRA_ORDER_NO", trip.orderNo)
+                    else if (!orderNo.isNullOrBlank()) putExtra("EXTRA_ORDER_NO", orderNo)
+                }
+                val pendingOpen = PendingIntent.getActivity(
+                    context,
+                    FALLBACK_NOTIFICATION_ID,
+                    openAppIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val contentText = if (trip != null) {
+                    val dep = if (trip.departureTime.isNotBlank()) "发车 ${trip.departureTime}" else ""
+                    "${trip.departureStation} → ${trip.arrivalStation} $dep".trim()
+                } else {
+                    "点击进入应用开启灵动岛"
+                }
+                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_stat_train)
+                    .setContentTitle("$trainCode 即将发车 · 点击开启灵动岛")
+                    .setContentText(contentText)
+                    .setContentIntent(pendingOpen)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .build()
+                nm.notify(FALLBACK_NOTIFICATION_ID, notification)
+            } catch (e: Exception) {
+                android.util.Log.w("LiveIslandService", "Unable to send fallback notification", e)
             }
         }
 

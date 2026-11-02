@@ -40,11 +40,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
 import androidx.compose.material3.ExperimentalMaterial3Api
+import team.shiro.railwidget.data.local.TripDatabaseHelper
+import team.shiro.railwidget.island.LiveIslandScheduler
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +80,8 @@ fun SettingsDialog(
         islandAutoClose: Boolean
     ) -> Unit
 ) {
+    val context = LocalContext.current
+    val db = remember { TripDatabaseHelper.getInstance(context) }
     var selectedCategoryTab by remember { mutableIntStateOf(0) } // 0: 灵动岛自动化, 1: 邮箱同步
 
     // 灵动岛自动化配置状态
@@ -85,6 +89,7 @@ fun SettingsDialog(
     var islandLeadMinutes by remember { mutableLongStateOf(initialIslandLeadMinutes) }
     var islandTransferHandover by remember { mutableStateOf(initialIslandTransferHandover) }
     var islandAutoClose by remember { mutableStateOf(initialIslandAutoClose) }
+    var islandUseAlarmClock by remember { mutableStateOf(db.getSetting("island_use_alarm_clock", "1") == "1") }
 
     // 邮箱配置状态
     var mailMode by remember { mutableIntStateOf(0) } // 0: Cloud Mail, 1: IMAP
@@ -205,11 +210,40 @@ fun SettingsDialog(
                                 )
                             }
                         }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
+
+                        // 2. 高可靠系统闹铃通道 (AlarmClock)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                                Text(
+                                    text = "高可靠系统闹铃唤醒",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = "使用 AlarmClock 穿透深度待机与省电拦截，保证灭屏锁屏准时弹出",
+                                    style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = islandUseAlarmClock,
+                                onCheckedChange = {
+                                    islandUseAlarmClock = it
+                                    db.setSetting("island_use_alarm_clock", if (it) "1" else "0")
+                                    LiveIslandScheduler.scheduleAutoLaunch(context)
+                                }
+                            )
+                        }
                     }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
 
-                    // 2. 中转换乘自动识别与接力
+                    // 3. 中转换乘自动识别与接力
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -234,7 +268,7 @@ fun SettingsDialog(
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 14.dp))
 
-                    // 3. 到站后自动关闭
+                    // 4. 到站后自动关闭
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -350,6 +384,7 @@ fun SettingsDialog(
         confirmButton = {
             Button(
                 onClick = {
+                    db.setSetting("island_use_alarm_clock", if (islandUseAlarmClock) "1" else "0")
                     onSaveSettings(
                         mailMode,
                         cloudUrl,
@@ -377,4 +412,3 @@ fun SettingsDialog(
         }
     )
 }
-

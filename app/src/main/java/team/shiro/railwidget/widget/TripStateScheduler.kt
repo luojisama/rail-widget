@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import team.shiro.railwidget.data.local.TripDatabaseHelper
 import team.shiro.railwidget.data.model.TripTimeline
 import team.shiro.railwidget.sync.TripRefresh
@@ -19,13 +20,25 @@ object TripStateScheduler {
         val events = TripDatabaseHelper.getInstance(context).getActiveTrips().flatMap { trip ->
             val dep = trip.getDepartureTimeMillis()
             val arr = trip.getArrivalTimeMillis()
-            val minute = if (now in (dep - 3_600_000L)..arr) listOf(now + 60_000L) else emptyList()
+            val minute = if (now in (dep - 3_600_000L)..(arr + 900_000L)) listOf(now + 60_000L) else emptyList()
             listOf(dep - 1_200_000L, dep - 300_000L, dep, arr) + minute +
                 TripTimeline.events(trip).flatMap { listOfNotNull(it.arrival, it.departure) }
         }.filter { it > now }
         val target = events.minOrNull()
-        if (target == null) manager.cancel(pending(context))
-        else manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target, pending(context))
+        if (target == null) {
+            manager.cancel(pending(context))
+        } else {
+            val canExact = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()
+            if (canExact) {
+                try {
+                    manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target, pending(context))
+                } catch (_: SecurityException) {
+                    manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target, pending(context))
+                }
+            } else {
+                manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target, pending(context))
+            }
+        }
     }
 }
 

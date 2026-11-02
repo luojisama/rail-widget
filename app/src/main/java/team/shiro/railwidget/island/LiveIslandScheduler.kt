@@ -6,9 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import team.shiro.railwidget.data.local.TripDatabaseHelper
-import team.shiro.railwidget.data.model.TripStage
+import team.shiro.railwidget.data.model.Trip
+import team.shiro.railwidget.data.model.TripTimeline
 import java.text.SimpleDateFormat
-import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
@@ -53,30 +54,71 @@ object LiveIslandScheduler {
      */
     fun scheduleAutoLaunch(context: Context) {
         cancelAutoLaunch(context)
-        if (!isAutoLaunchEnabled(context)) return
         val db = TripDatabaseHelper.getInstance(context)
+        if (!isAutoLaunchEnabled(context)) {
+            db.setSetting("island_alarm_status", "未开启自动唤起")
+            db.setSetting("island_next_alarm_millis", "")
+            return
+        }
+
         val now = System.currentTimeMillis()
         val dismissed = db.getSetting("island_dismissed_order")
         val trips = db.getActiveTrips().filter {
             it.getArrivalTimeMillis() > now && it.orderNo != dismissed
         }.sortedBy { it.getDepartureTimeMillis() }
+
         val lead = getAutoLeadMinutes(context)
         val eligible = trips.firstOrNull { now >= launchTime(it, lead) }
+
         if (eligible != null && !LiveIslandService.isServiceRunning && IslandPermissionHelper.hasOverlayPermission(context)) {
+            // Android 14/15 豁免：先挂载可见悬浮窗，再拉起前台服务
+            IslandOverlayHost.ensureAttached(context, eligible)
             LiveIslandService.start(context, eligible.orderNo, automatic = true)
         }
+
         val targets = trips.map { launchTime(it, lead) }.filter { it > now }.toMutableList()
-        // Re-evaluate when an overlapping trip ends, even when its service is absent.
+        // 当存在正在运行或符合条件的行程时，在行程到达后重新评估接力行程
         if (eligible != null) targets += eligible.getArrivalTimeMillis() + 1000L
-        val target = targets.minOrNull() ?: return
+
+        val target = targets.minOrNull()
+        if (target == null) {
+            db.setSetting("island_alarm_status", "当前无待唤起行程")
+            db.setSetting("island_next_alarm_millis", "")
+            return
+        }
+
+        db.setSetting("island_next_alarm_millis", target.toString())
+
         val manager = context.getSystemService(AlarmManager::class.java) ?: return
-        val pending = PendingIntent.getBroadcast(context, ALARM_REQUEST_CODE,
+        val pending = PendingIntent.getBroadcast(
+            context,
+            ALARM_REQUEST_CODE,
             Intent(context, LiveIslandAutoLaunchReceiver::class.java).setAction(LiveIslandAutoLaunchReceiver.ACTION_AUTO_LAUNCH),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val timeFormat = SimpleDateFormat("HH:mm", Locale.CHINA).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+        }
+        val timeStr = timeFormat.format(Date(target))
+
         try {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()) {
-                manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target, pending)
-                db.setSetting("island_alarm_status", "已安排精确定时唤起")
+                val useAlarmClock = db.getSetting("island_use_alarm_clock", "1") == "1"
+                if (useAlarmClock) {
+                    val showIntent = PendingIntent.getActivity(
+                        context,
+                        0,
+                        Intent(context, team.shiro.railwidget.ui.MainActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                        },
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    manager.setAlarmClock(AlarmManager.AlarmClockInfo(target, showIntent), pending)
+                } else {
+                    manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target, pending)
+                }
+                db.setSetting("island_alarm_status", "已安排精确定时唤起（$timeStr）")
             } else {
                 manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, target, pending)
                 db.setSetting("island_alarm_status", "未授予精确闹钟权限，唤起可能延迟")
@@ -87,9 +129,9 @@ object LiveIslandScheduler {
         }
     }
 
-    fun launchTime(trip: team.shiro.railwidget.data.model.Trip, lead: Long): Long =
-        if (lead == 0L) team.shiro.railwidget.data.model.TripTimeline.parse(trip.departureDate, "00:00")?.plus(5000L)
-            ?: trip.getDepartureTimeMillis() - 3_600_000L
+    fun launchTime(trip: Trip, lead: Long): Long =
+        if (lead == 0L) TripTimeline.parse(trip.departureDate, "00:00")?.plus(5000L)
+            ?: (trip.getDepartureTimeMillis() - 3_600_000L)
         else trip.getDepartureTimeMillis() - lead * 60_000L
 
     fun cancelAutoLaunch(context: Context) {
@@ -109,4 +151,3 @@ object LiveIslandScheduler {
         }
     }
 }
-
