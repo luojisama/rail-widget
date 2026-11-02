@@ -11,10 +11,13 @@
     <string name="sync_sms">读取 12306 短信</string>
 
     <!-- Shortcuts Strings -->
+    <string name="shortcut_refresh_short">刷新状态</string>
+    <string name="shortcut_refresh_long">立即刷新列车实时状态与资料</string>
     <string name="shortcut_add_4x2_short">添加横卡</string>
     <string name="shortcut_add_4x2_long">添加行程横卡 (4×2 / 5×2)</string>
     <string name="shortcut_add_2x2_short">添加磁贴</string>
     <string name="shortcut_add_2x2_long">添加车票磁贴 (2×2)</string>
     <string name="shortcut_sync_sms_short">同步短信</string>
     <string name="shortcut_sync_sms_long">读取 12306 短信行程</string>
+    <string name="tile_refresh_label">刷新行程</string>
 </resources>

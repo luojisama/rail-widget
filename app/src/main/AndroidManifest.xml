@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
@@ -122,6 +123,18 @@
                 android:value="Train departure countdown and ticket gate live status overlay" />
         </service>
 
+        <!-- Quick Settings Tile for instant trip status refresh -->
+        <service
+            android:name=".sync.RefreshTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_train"
+            android:label="@string/tile_refresh_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <receiver android:name=".widget.TripStateReceiver" android:exported="false" />
         <!-- Live Island Auto Launch Receiver -->
         <receiver
@@ -140,4 +153,3 @@
     </application>
 
 </manifest>
-
